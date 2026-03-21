@@ -1,7 +1,14 @@
+import firebase_admin
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, users, recipes, pantry, grocery, collections, stores, orders
+from config import settings
+from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders
+
+# Initialize Firebase Admin SDK once at startup.
+# Token verification only — no service account credentials required.
+firebase_admin.initialize_app(options={"projectId": settings.FIREBASE_PROJECT_ID})
 
 app = FastAPI(
     title="Gook Backend",
@@ -16,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(recipes.router)
 app.include_router(pantry.router)
