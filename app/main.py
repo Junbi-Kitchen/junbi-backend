@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import food, users
+
+from app.api.routes import auth, users, recipes, pantry, grocery, collections, stores, orders
 
 app = FastAPI(
     title="Gook Backend",
@@ -15,8 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(food.router)
+app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(recipes.router)
+app.include_router(pantry.router)
+app.include_router(grocery.router)
+app.include_router(collections.router)
+app.include_router(stores.router)
+app.include_router(orders.router)
 
 
 @app.get("/health")
