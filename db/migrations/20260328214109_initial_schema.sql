@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- ============================================================
 -- EXTENSIONS
 -- ============================================================
@@ -305,7 +307,7 @@ CREATE TABLE waste_log (
     item_name       TEXT NOT NULL,
     action          TEXT NOT NULL,
     estimated_value DECIMAL(10,2),
-    pantry_item_id  UUID REFERENCES pantry_items(id) on DELETE SET NULL,
+    pantry_item_id  UUID REFERENCES pantry_items(id) ON DELETE SET NULL,
     recipe_id       UUID REFERENCES recipes(id) ON DELETE SET NULL,
     logged_at       TIMESTAMPTZ DEFAULT now()
 );
@@ -599,3 +601,53 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+-- migrate:down
+
+DROP FUNCTION IF EXISTS log_pantry_action(UUID, TEXT, DECIMAL);
+DROP FUNCTION IF EXISTS get_expiring_items(TEXT, INT);
+DROP FUNCTION IF EXISTS handle_updated_at() CASCADE;
+
+DROP VIEW IF EXISTS user_savings;
+DROP VIEW IF EXISTS pantry_items_with_freshness;
+
+DROP TABLE IF EXISTS priority_cards;
+DROP TABLE IF EXISTS chat_messages;
+DROP TABLE IF EXISTS grocery_items;
+DROP TABLE IF EXISTS grocery_lists;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS stores;
+DROP TABLE IF EXISTS waste_log;
+DROP TABLE IF EXISTS receipt_line_items;
+DROP TABLE IF EXISTS receipts;
+DROP TABLE IF EXISTS pantry_items;
+DROP TABLE IF EXISTS meal_plan_items;
+DROP TABLE IF EXISTS meal_plans;
+DROP TABLE IF EXISTS collection_recipes;
+DROP TABLE IF EXISTS collections;
+DROP TABLE IF EXISTS user_recipe_interactions;
+DROP TABLE IF EXISTS recipe_tags;
+DROP TABLE IF EXISTS recipe_steps;
+DROP TABLE IF EXISTS recipe_ingredients;
+DROP TABLE IF EXISTS recipes;
+DROP TABLE IF EXISTS ingredient_nutrients;
+DROP TABLE IF EXISTS nutrients;
+DROP TABLE IF EXISTS ingredient_aliases;
+DROP TABLE IF EXISTS ingredients;
+DROP TABLE IF EXISTS ingredient_categories;
+DROP TABLE IF EXISTS connected_accounts;
+DROP TABLE IF EXISTS user_addresses;
+DROP TABLE IF EXISTS user_preferences;
+DROP TABLE IF EXISTS user_profiles;
+
+DROP TYPE IF EXISTS interaction_action;
+DROP TYPE IF EXISTS receipt_status;
+DROP TYPE IF EXISTS order_status;
+DROP TYPE IF EXISTS social_platform;
+DROP TYPE IF EXISTS recipe_difficulty;
+DROP TYPE IF EXISTS added_via;
+DROP TYPE IF EXISTS storage_location;
+
+DROP EXTENSION IF EXISTS "uuid-ossp";
+DROP EXTENSION IF EXISTS vector;
