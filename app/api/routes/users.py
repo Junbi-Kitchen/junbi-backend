@@ -2,11 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from app.core.dependencies import get_current_user
-from app.services.user_service import UserService
+from app.core.dependencies import get_current_user, _build_user
+from app.db import get_db
 
 router = APIRouter(prefix="/users", tags=["users"])
-_user_service = UserService()
 
 
 class UpdateProfileRequest(BaseModel):
@@ -22,7 +21,6 @@ class UpdatePreferencesRequest(BaseModel):
 
 
 class AddressBody(BaseModel):
-    id: Optional[str] = None
     label: str
     street: str
     city: str
@@ -45,117 +43,159 @@ def get_me(current_user: dict = Depends(get_current_user)) -> dict:
 def update_profile(
     body: UpdateProfileRequest,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    updates = body.model_dump(exclude_none=True)
-    user = _user_service.update_user(current_user["id"], updates)
-    return user
+    cur = db.cursor()
+    if body.name is not None:
+        cur.execute(
+            "UPDATE user_profiles SET display_name = %s, updated_at = now() WHERE id = %s",
+            (body.name, current_user["id"]),
+        )
+    if body.avatar is not None:
+        cur.execute(
+            "UPDATE user_profiles SET avatar_url = %s, updated_at = now() WHERE id = %s",
+            (body.avatar, current_user["id"]),
+        )
+    return _build_user(cur, current_user["id"])
 
 
 @router.patch("/me/preferences")
 def update_preferences(
     body: UpdatePreferencesRequest,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    prefs = {**current_user.get("preferences", {}), **body.model_dump(exclude_none=True)}
-    user = _user_service.update_user(current_user["id"], {"preferences": prefs})
-    return user
+    cur = db.cursor()
+    existing = current_user["preferences"]
+    dietary = body.dietaryTags if body.dietaryTags is not None else existing["dietaryTags"]
+    allergies = body.allergies if body.allergies is not None else existing["allergies"]
+    cuisines = body.cuisines if body.cuisines is not None else existing["cuisines"]
+    size = body.householdSize if body.householdSize is not None else existing["householdSize"]
+    cur.execute("""
+        UPDATE user_preferences
+        SET dietary_tags = %s, allergies = %s, cuisines = %s,
+            household_size = %s, updated_at = now()
+        WHERE user_id = %s
+    """, (dietary, allergies, cuisines, size, current_user["id"]))
+    return _build_user(cur, current_user["id"])
 
 
-@router.post("/me/addresses")
+@router.post("/me/addresses", status_code=201)
 def add_address(
     body: AddressBody,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    import uuid
-    addresses = list(current_user.get("addresses", []))
-    new_addr = body.model_dump()
-    new_addr["id"] = new_addr.get("id") or str(uuid.uuid4())
-
-    # If first address or isDefault requested, make it default
-    if body.isDefault or not addresses:
-        for a in addresses:
-            a["isDefault"] = False
-        new_addr["isDefault"] = True
-        default_id = new_addr["id"]
+    cur = db.cursor()
+    uid = current_user["id"]
+    # If first address or isDefault requested, clear existing defaults first
+    if body.isDefault or not current_user["addresses"]:
+        cur.execute("UPDATE user_addresses SET is_default = false WHERE user_id = %s", (uid,))
+        is_default = True
     else:
-        default_id = current_user.get("defaultAddressId")
-
-    addresses.append(new_addr)
-    user = _user_service.update_user(
-        current_user["id"],
-        {"addresses": addresses, "defaultAddressId": default_id},
-    )
-    return user
+        is_default = False
+    cur.execute("""
+        INSERT INTO user_addresses (user_id, label, street, city, state, zip, is_default)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (uid, body.label, body.street, body.city, body.state, body.zip, is_default))
+    return _build_user(cur, uid)
 
 
 @router.patch("/me/addresses/{address_id}")
 def update_address(
     address_id: str,
-    body: dict,
+    body: AddressBody,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    addresses = list(current_user.get("addresses", []))
-    for i, addr in enumerate(addresses):
-        if addr["id"] == address_id:
-            addresses[i] = {**addr, **{k: v for k, v in body.items() if k != "id"}}
-            break
-    else:
+    cur = db.cursor()
+    uid = current_user["id"]
+    cur.execute(
+        "SELECT id FROM user_addresses WHERE id = %s AND user_id = %s",
+        (address_id, uid),
+    )
+    if not cur.fetchone():
         raise HTTPException(status_code=404, detail="Address not found")
-    user = _user_service.update_user(current_user["id"], {"addresses": addresses})
-    return user
+    if body.isDefault:
+        cur.execute("UPDATE user_addresses SET is_default = false WHERE user_id = %s", (uid,))
+    cur.execute("""
+        UPDATE user_addresses
+        SET label = %s, street = %s, city = %s, state = %s, zip = %s, is_default = %s
+        WHERE id = %s AND user_id = %s
+    """, (body.label, body.street, body.city, body.state, body.zip, body.isDefault, address_id, uid))
+    return _build_user(cur, uid)
 
 
 @router.delete("/me/addresses/{address_id}")
 def delete_address(
     address_id: str,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    addresses = [a for a in current_user.get("addresses", []) if a["id"] != address_id]
-    default_id = current_user.get("defaultAddressId")
-    if default_id == address_id:
-        default_id = addresses[0]["id"] if addresses else None
-    user = _user_service.update_user(
-        current_user["id"],
-        {"addresses": addresses, "defaultAddressId": default_id},
+    cur = db.cursor()
+    uid = current_user["id"]
+    cur.execute(
+        "DELETE FROM user_addresses WHERE id = %s AND user_id = %s RETURNING is_default",
+        (address_id, uid),
     )
-    return user
+    deleted = cur.fetchone()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Address not found")
+    # If we deleted the default, promote the next address
+    if deleted["is_default"]:
+        cur.execute(
+            "UPDATE user_addresses SET is_default = true WHERE user_id = %s ORDER BY created_at LIMIT 1",
+            (uid,),
+        )
+    return _build_user(cur, uid)
 
 
 @router.patch("/me/addresses/{address_id}/default")
 def set_default_address(
     address_id: str,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    addresses = list(current_user.get("addresses", []))
-    found = False
-    for addr in addresses:
-        addr["isDefault"] = addr["id"] == address_id
-        if addr["id"] == address_id:
-            found = True
-    if not found:
-        raise HTTPException(status_code=404, detail="Address not found")
-    user = _user_service.update_user(
-        current_user["id"],
-        {"addresses": addresses, "defaultAddressId": address_id},
+    cur = db.cursor()
+    uid = current_user["id"]
+    cur.execute(
+        "SELECT id FROM user_addresses WHERE id = %s AND user_id = %s",
+        (address_id, uid),
     )
-    return user
+    if not cur.fetchone():
+        raise HTTPException(status_code=404, detail="Address not found")
+    cur.execute("UPDATE user_addresses SET is_default = false WHERE user_id = %s", (uid,))
+    cur.execute(
+        "UPDATE user_addresses SET is_default = true WHERE id = %s AND user_id = %s",
+        (address_id, uid),
+    )
+    return _build_user(cur, uid)
 
 
 @router.post("/me/connected-accounts")
 def connect_account(
     body: ConnectedAccountBody,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    accounts = {**current_user.get("connectedAccounts", {}), body.platform: body.handle}
-    user = _user_service.update_user(current_user["id"], {"connectedAccounts": accounts})
-    return user
+    cur = db.cursor()
+    cur.execute("""
+        INSERT INTO connected_accounts (user_id, provider, handle)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, provider) DO UPDATE SET handle = EXCLUDED.handle
+    """, (current_user["id"], body.platform, body.handle))
+    return _build_user(cur, current_user["id"])
 
 
 @router.delete("/me/connected-accounts/{platform}")
 def disconnect_account(
     platform: str,
     current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
 ) -> dict:
-    accounts = {k: v for k, v in current_user.get("connectedAccounts", {}).items() if k != platform}
-    user = _user_service.update_user(current_user["id"], {"connectedAccounts": accounts})
-    return user
+    cur = db.cursor()
+    cur.execute(
+        "DELETE FROM connected_accounts WHERE user_id = %s AND provider = %s",
+        (current_user["id"], platform),
+    )
+    return _build_user(cur, current_user["id"])

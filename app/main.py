@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders
+from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings
 
 # Initialize Firebase Admin SDK once at startup.
 # Token verification only — no service account credentials required.
@@ -30,6 +30,7 @@ app.include_router(grocery.router)
 app.include_router(collections.router)
 app.include_router(stores.router)
 app.include_router(orders.router)
+app.include_router(savings.router)
 
 
 @app.get("/health")
