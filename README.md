@@ -44,8 +44,16 @@ Create a `.env` file in the project root:
 ```env
 DATABASE_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
 FIREBASE_PROJECT_ID=your-firebase-project-id
-FIREBASE_SERVICE_ACCOUNT_KEY=path/to/serviceAccountKey.json  # or JSON string
+FIREBASE_SERVICE_ACCOUNT_KEY=./your-firebase-adminsdk-key.json
 ```
+
+**Getting the Firebase service account key:**
+
+1. Go to [Firebase Console](https://console.firebase.google.com) → your project → Project Settings → Service Accounts
+2. Click "Generate new private key" and download the JSON file
+3. Place it in the project root and set the path in `.env`
+
+The key file is gitignored — never commit it.
 
 ### 5. Run database migrations
 
