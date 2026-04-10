@@ -68,7 +68,9 @@ def get_current_user(
 ) -> dict:
     try:
         decoded = fb_auth.verify_id_token(credentials.credentials)
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("verify_id_token failed: %s: %s", type(e).__name__, e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
