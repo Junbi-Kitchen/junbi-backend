@@ -12,6 +12,43 @@ from app.db import get_db
 router = APIRouter(prefix="/pantry", tags=["pantry"])
 
 # Maps frontend category → DB storage_location enum
+USDA_SLUG_TO_CATEGORY: dict[str, str] = {
+    "dairy-and-egg-products": "dairy",
+    "spices-and-herbs": "spices",
+    "fats-and-oils": "condiments",
+    "poultry-products": "proteins",
+    "soups-sauces-and-gravies": "condiments",
+    "sausages-and-luncheon-meats": "proteins",
+    "breakfast-cereals": "grains",
+    "fruits-and-fruit-juices": "produce",
+    "pork-products": "proteins",
+    "vegetables-and-vegetable-products": "produce",
+    "nut-and-seed-products": "proteins",
+    "beef-products": "proteins",
+    "beverages": "beverages",
+    "alcoholic-beverages": "beverages",
+    "finfish-and-shellfish-products": "proteins",
+    "legumes-and-legume-products": "proteins",
+    "lamb-veal-and-game-products": "proteins",
+    "baked-products": "bakery",
+    "sweets": "pantry",
+    "cereal-grains-and-pasta": "grains",
+    "fast-foods": "pantry",
+    "meals-entrees-and-side-dishes": "pantry",
+    "snacks": "pantry",
+    "baby-foods": "pantry",
+    # already-simplified pass-through
+    "produce": "produce",
+    "proteins": "proteins",
+    "dairy": "dairy",
+    "grains": "grains",
+    "pantry": "pantry",
+    "frozen": "frozen",
+    "condiments": "condiments",
+    "spices": "spices",
+    "bakery": "bakery",
+}
+
 CATEGORY_TO_LOCATION: dict[str, str] = {
     "proteins": "fridge",
     "dairy": "fridge",
@@ -71,7 +108,8 @@ def _resolve_ingredient(cur, name: str) -> str:
 
 def _row_to_item(row: dict) -> dict:
     """Convert a pantry_items_with_freshness DB row to the frontend shape."""
-    category = row.get("ic_slug") or LOCATION_TO_CATEGORY.get(str(row.get("location", "pantry")), "pantry")
+    raw = row.get("ic_slug") or LOCATION_TO_CATEGORY.get(str(row.get("location", "pantry")), "pantry")
+    category = USDA_SLUG_TO_CATEGORY.get(raw, "pantry")
     expiry = row["expiry_date"]
     return {
         "id": str(row["id"]),
@@ -97,6 +135,28 @@ def _get_items(cur, user_id: str) -> list:
         ORDER BY p.expiry_date ASC NULLS LAST
     """, (user_id,))
     return [_row_to_item(dict(r)) for r in cur.fetchall()]
+
+
+@router.get("/ingredients/search")
+def search_ingredients(
+    q: str = "",
+    limit: int = 20,
+    db=Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> list:
+    cur = db.cursor()
+    cur.execute("""
+        SELECT i.name, COALESCE(ic.slug, 'pantry') AS category
+        FROM ingredients i
+        LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
+        WHERE i.name ILIKE %s
+        ORDER BY i.name
+        LIMIT %s
+    """, (f"%{q}%", limit))
+    return [
+        {"name": r["name"], "category": USDA_SLUG_TO_CATEGORY.get(r["category"], "pantry")}
+        for r in cur.fetchall()
+    ]
 
 
 @router.get("")
