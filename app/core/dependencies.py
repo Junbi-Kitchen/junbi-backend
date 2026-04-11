@@ -71,7 +71,7 @@ def get_current_user(
     db=Depends(get_db),
 ) -> dict:
     try:
-        decoded = fb_auth.verify_id_token(credentials.credentials)
+        decoded = fb_auth.verify_id_token(credentials.credentials, clock_skew_seconds=5)
     except Exception as e:
         logger.warning("verify_id_token failed: %s: %s", type(e).__name__, e)
         raise HTTPException(
