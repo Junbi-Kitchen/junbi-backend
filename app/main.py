@@ -1,3 +1,4 @@
+import logging
 import firebase_admin
 from firebase_admin import credentials
 
@@ -7,8 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings
 
-cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_KEY)
-firebase_admin.initialize_app(cred, options={"projectId": settings.FIREBASE_PROJECT_ID})
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+if settings.FIREBASE_SERVICE_ACCOUNT_KEY:
+    logger.info("Firebase: initializing with service account key")
+    cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_KEY)
+    firebase_admin.initialize_app(cred, options={"projectId": settings.FIREBASE_PROJECT_ID})
+else:
+    logger.info("Firebase: initializing with ADC (Cloud Run / GCP environment expected)")
+    firebase_admin.initialize_app(options={"projectId": settings.FIREBASE_PROJECT_ID})
 
 app = FastAPI(
     title="Gook Backend",

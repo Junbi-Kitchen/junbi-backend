@@ -39,26 +39,31 @@ pip install -r requirements.txt
 
 ### 4. Configure environment variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and fill in your values:
 
-```env
-DATABASE_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
-FIREBASE_PROJECT_ID=your-firebase-project-id
-FIREBASE_SERVICE_ACCOUNT_KEY=./your-firebase-adminsdk-key.json
+```bash
+cp .env.example .env
 ```
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Supabase PostgreSQL connection string |
+| `FIREBASE_PROJECT_ID` | Firebase project ID |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Path to service account JSON (see below) |
 
 **Getting the Firebase service account key:**
 
 1. Go to [Firebase Console](https://console.firebase.google.com) → your project → Project Settings → Service Accounts
 2. Click "Generate new private key" and download the JSON file
-3. Place it in the project root and set the path in `.env`
+3. Place it in the project root (it's gitignored) and set the path in `.env`
 
-The key file is gitignored — never commit it.
+On Cloud Run, leave `FIREBASE_SERVICE_ACCOUNT_KEY` blank — GCP provides credentials automatically.
 
 ### 5. Run database migrations
 
 ```bash
-dbmate up
+make migrate
+# dbmate up
 ```
 
 This applies all migrations from `db/migrations/` and updates `db/schema.sql`.
@@ -68,20 +73,32 @@ This applies all migrations from `db/migrations/` and updates `db/schema.sql`.
 Run in order — USDA data must exist before mock data resolves ingredient IDs.
 
 ```bash
-# Seed USDA SR Legacy ingredient categories + ingredients (~7,700 foods)
-python scripts/seed/seed_usda.py
-
-# Seed demo user with recipes, pantry, grocery list, orders, and waste log
-python scripts/seed/seed_mock.py
+make seed
+# python scripts/seed/seed_usda.py
+# python scripts/seed/seed_mock.py
 ```
 
 ### 7. Run the development server
 
 ```bash
-uvicorn app.main:app --reload
+make dev
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000`.
+
+## Connecting the Frontend
+
+The backend binds to `0.0.0.0` so any device on the same WiFi can reach it.
+
+In development, the frontend auto-detects the backend IP from Expo's dev server — no manual configuration needed for physical devices. Just leave `EXPO_PUBLIC_API_URL` blank in `gook-frontend/.env`.
+
+Set `EXPO_PUBLIC_API_URL` explicitly only when:
+
+| Case | Value |
+|---|---|
+| Android Emulator | `http://10.0.2.2:8000` |
+| Production | `https://your-deployed-api.com` |
 
 ## API Docs
 

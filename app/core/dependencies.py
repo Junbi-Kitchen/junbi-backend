@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin.auth as fb_auth
 
 from app.db import get_db
+
+logger = logging.getLogger(__name__)
 
 security = HTTPBearer()
 
@@ -69,8 +73,7 @@ def get_current_user(
     try:
         decoded = fb_auth.verify_id_token(credentials.credentials)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("verify_id_token failed: %s: %s", type(e).__name__, e)
+        logger.warning("verify_id_token failed: %s: %s", type(e).__name__, e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
