@@ -1,3 +1,4 @@
+import threading
 import psycopg2.pool
 import psycopg2.extras
 from contextlib import contextmanager
@@ -21,7 +22,8 @@ def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
 
 @contextmanager
 def _get_conn():
-    conn = get_pool().getconn()
+    key = threading.get_ident()
+    conn = get_pool().getconn(key=key)
     try:
         yield conn
         conn.commit()
@@ -29,7 +31,7 @@ def _get_conn():
         conn.rollback()
         raise
     finally:
-        get_pool().putconn(conn)
+        get_pool().putconn(conn, key=key)
 
 
 def get_db():
