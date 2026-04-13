@@ -16,8 +16,7 @@ from app.db import get_pool
 from config import settings
 
 from .state import SmartGroceryState
-from .tools.kroger import search_products as kroger_search
-from .tools.webview import build_checkout_url
+from .tools.instacart import call_instacart_service, execute_checkout
 
 logger = logging.getLogger(__name__)
 
@@ -221,17 +220,21 @@ async def search_store(state: SmartGroceryState) -> dict:
     Returns product matches keyed by item name.
     """
     missing = state.get("missing_items", [])
-    store = state.get("store_preference", "kroger")
+    store = state.get("store_preference", "instacart")
     results: dict[str, list] = {}
 
     for item in missing:
         name = item["name"]
         try:
-            if store == "kroger":
-                products = await kroger_search(name)
-            else:
-                # Other stores don't have a search API — use stub data
+            products = await call_instacart_service(
+                "/api/products/search",
+                {"store_id": state.get("store_id", ""), "query": name, "limit": 5},
+            )
+            # Normalize: service returns {products: [...]} or stub {stub: True}
+            if isinstance(products, dict) and products.get("stub"):
                 products = _stub_store_search(name, store)
+            elif isinstance(products, dict):
+                products = products.get("products", _stub_store_search(name, store))
             results[name] = products
         except Exception as e:
             logger.warning("Store search failed for '%s': %s", name, e)
@@ -246,48 +249,55 @@ async def search_store(state: SmartGroceryState) -> dict:
 
 async def compare_prices(state: SmartGroceryState) -> dict:
     """
-    Estimate cart total for each available store to show savings comparison.
+    Estimate cart total per retailer available through Instacart to show
+    savings comparison. Uses actual prices from search results as a baseline
+    and applies per-retailer price index heuristics for the others.
 
-    For stores with real APIs (Kroger), uses actual prices.
-    For others, applies a price multiplier heuristic over Kroger baseline.
+    Instacart surfaces all retailers (Walmart, Costco, etc.) — price
+    multipliers reflect typical relative pricing between chains.
 
-    TODO: Replace heuristics with real API calls once integrations are built.
+    TODO: Replace heuristics with per-retailer search calls once we have
+          store_ids for each retailer from getStores().
     """
     missing = state.get("missing_items", [])
     search_results = state.get("store_search_results", {})
 
-    # Build Kroger baseline from search results
-    kroger_total = 0.0
+    # Build baseline total from whatever search results we have
+    baseline_total = 0.0
     item_count = 0
     for item in missing:
         name = item["name"]
         products = search_results.get(name, [])
-        kroger_products = [p for p in products if p.get("store") == "kroger" or "stub-kroger" in p.get("product_id", "")]
-        if kroger_products and kroger_products[0].get("price"):
-            kroger_total += kroger_products[0]["price"] * max(item["quantity"], 1)
+        if products and products[0].get("price"):
+            baseline_total += products[0]["price"] * max(item["quantity"], 1)
             item_count += 1
 
     if item_count == 0:
-        kroger_total = len(missing) * 4.0  # rough fallback
+        baseline_total = len(missing) * 4.0  # rough fallback
 
-    # Price multipliers relative to Kroger (heuristic)
+    # Price index per retailer relative to a mid-tier baseline
+    # Source: general market positioning — replace with real data when available
     store_multipliers = {
-        "kroger": 1.0,
-        "instacart": 1.08,     # Instacart markup ~8%
-        "walmart": 0.92,       # Walmart typically ~8% cheaper
-        "whole_foods": 1.25,   # Whole Foods premium
+        "walmart": 0.88,        # consistently cheapest for groceries
+        "costco": 0.82,         # cheapest per unit, but bulk quantities
+        "aldi": 0.85,           # discount grocer
+        "kroger": 1.0,          # mid-tier baseline
+        "publix": 1.05,
+        "whole_foods": 1.28,    # premium
     }
 
-    price_comparison: dict[str, float] = {}
-    for store, multiplier in store_multipliers.items():
-        price_comparison[store] = round(kroger_total * multiplier, 2)
+    price_comparison: dict[str, float] = {
+        store: round(baseline_total * mult, 2)
+        for store, mult in store_multipliers.items()
+    }
 
     # Find best and worst for summary
     sorted_stores = sorted(price_comparison.items(), key=lambda x: x[1])
     best_store, best_price = sorted_stores[0]
     worst_store, worst_price = sorted_stores[-1]
-    preferred = state.get("store_preference", "kroger")
-    preferred_price = price_comparison.get(preferred, kroger_total)
+    preferred = state.get("store_preference", "instacart")
+    # For preferred store use baseline (actual search prices)
+    preferred_price = price_comparison.get(preferred, baseline_total)
 
     savings_summary = {
         "best_store": best_store,
@@ -323,7 +333,7 @@ def build_cart(state: SmartGroceryState) -> dict:
 
     missing = state.get("missing_items", [])
     search_results = state.get("store_search_results", {})
-    store = state.get("store_preference", "kroger")
+    store = state.get("store_preference", "instacart")
     budget = state.get("budget") or state["user_preferences"].get("weeklyBudget") or 0
 
     items_with_options = []
@@ -419,34 +429,54 @@ def human_checkpoint(state: SmartGroceryState) -> dict:
 
 async def place_order(state: SmartGroceryState) -> dict:
     """
-    Place the order via the store's API or generate a WebView checkout URL.
-
-    Kroger (native API): adds items to cart, returns checkout URL for WebView.
-    All other stores: generates a pre-filled search URL for in-app WebView.
+    Place the order via the Instacart TypeScript service.
+    Returns a checkout_url the frontend opens in an in-app WebView.
     """
     if not state.get("order_confirmed"):
         return {"order_result": {"status": "cancelled"}, "error": None}
 
-    store = state.get("store_preference", "kroger")
+    store = state.get("store_preference", "instacart")
     cart_items = state.get("cart_items", [])
     delivery_preference = state.get("delivery_preference", "delivery")
+    cart_id = state.get("cart_id")
 
-    if store == "kroger" and settings.KROGER_CLIENT_ID:
-        # TODO: retrieve user's Kroger access_token from connected_accounts
-        # For now, fall through to WebView
-        pass
-
-    # All stores (including Kroger without OAuth): WebView checkout URL
-    checkout_info = build_checkout_url(store, cart_items, delivery_preference)
-    order_result = {
-        "status": "pending_checkout",
-        "method": checkout_info["method"],
-        "checkout_url": checkout_info["checkout_url"],
-        "store": store,
-        "item_count": len(cart_items),
-        "cart_total": state.get("cart_total", 0),
-        "delivery_preference": delivery_preference,
-    }
+    if cart_id:
+        checkout = await execute_checkout(
+            cart_id=cart_id,
+            max_budget=state.get("budget") or 0,
+            fulfillment_type=delivery_preference,
+            bypass_budget=False,
+        )
+        if checkout.get("success"):
+            result_data = checkout.get("result", {})
+            order_result = {
+                "status": "pending_checkout",
+                "method": result_data.get("method", "webview"),
+                "checkout_url": result_data.get("checkout_url"),
+                "store": store,
+                "item_count": len(cart_items),
+                "cart_total": state.get("cart_total", 0),
+                "delivery_preference": delivery_preference,
+            }
+        else:
+            # Budget exceeded or API error — surface to frontend
+            order_result = {
+                "status": checkout.get("reason", "error"),
+                "estimated_total": checkout.get("estimated_total"),
+                "max_budget": checkout.get("max_budget"),
+                "store": store,
+            }
+    else:
+        # No cart_id yet — return a WebView fallback URL
+        order_result = {
+            "status": "pending_checkout",
+            "method": "webview",
+            "checkout_url": "https://www.instacart.com/store",
+            "store": store,
+            "item_count": len(cart_items),
+            "cart_total": state.get("cart_total", 0),
+            "delivery_preference": delivery_preference,
+        }
 
     return {"order_result": order_result, "error": None}
 
@@ -570,7 +600,7 @@ def _stub_store_search(item_name: str, store: str) -> list[dict]:
 
 
 def _stub_build_cart(state: SmartGroceryState) -> dict:
-    store = state.get("store_preference", "kroger")
+    store = state.get("store_preference", "instacart")
     missing = state.get("missing_items", [])
     search_results = state.get("store_search_results", {})
 

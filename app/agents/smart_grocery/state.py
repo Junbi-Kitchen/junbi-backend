@@ -34,7 +34,11 @@ class SmartGroceryState(TypedDict):
     user_id: str
 
     # Request inputs
-    store_preference: str        # 'kroger' | 'instacart' | 'walmart'
+    # store_preference is the Instacart retailer slug, e.g. 'walmart', 'costco',
+    # 'publix' — resolved from getStores() using the user's zip code.
+    # Defaults to 'instacart' (let Instacart pick the best available retailer).
+    store_preference: str
+    store_id: str | None         # Instacart retailer ID from getStores()
     delivery_preference: str     # 'delivery' | 'pickup'
     budget: float | None
 
@@ -58,9 +62,12 @@ class SmartGroceryState(TypedDict):
     cart_items: list[CartItem]
     cart_total: float
 
+    # Instacart cart ID (from createCart via TS service)
+    cart_id: str | None
+
     # Order lifecycle
     order_confirmed: bool | None   # None=pending review, True=go, False=cancelled
-    order_result: dict | None      # {order_id, status, checkout_url (for WebView stores)}
+    order_result: dict | None      # {status, checkout_url} — checkout_url opened in WebView
 
     # Written back to DB after order
     grocery_list_id: str | None
