@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings
+from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ app.include_router(collections.router)
 app.include_router(stores.router)
 app.include_router(orders.router)
 app.include_router(savings.router)
+app.include_router(agents.router)
 
 
 @app.get("/health")
