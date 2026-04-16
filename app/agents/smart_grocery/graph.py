@@ -2,7 +2,7 @@
 Smart Grocery LangGraph StateGraph.
 
 Flow:
-  load_context → analyze_pantry → search_store → compare_prices
+  load_context → resolve_stores → analyze_pantry → search_store → compare_prices
       → build_cart → human_checkpoint → place_order → finalize
 
 The graph is compiled with MemorySaver so state persists across the
@@ -16,6 +16,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from .state import SmartGroceryState
 from .nodes import (
     load_context,
+    resolve_stores,
     analyze_pantry,
     search_store,
     compare_prices,
@@ -41,6 +42,7 @@ def build_graph() -> StateGraph:
     builder = StateGraph(SmartGroceryState)
 
     builder.add_node("load_context", load_context)
+    builder.add_node("resolve_stores", resolve_stores)
     builder.add_node("analyze_pantry", analyze_pantry)
     builder.add_node("search_store", search_store)
     builder.add_node("compare_prices", compare_prices)
@@ -51,7 +53,8 @@ def build_graph() -> StateGraph:
     builder.add_node("cancelled", _cancelled)
 
     builder.set_entry_point("load_context")
-    builder.add_edge("load_context", "analyze_pantry")
+    builder.add_edge("load_context", "resolve_stores")
+    builder.add_edge("resolve_stores", "analyze_pantry")
     builder.add_edge("analyze_pantry", "search_store")
     builder.add_edge("search_store", "compare_prices")
     builder.add_edge("compare_prices", "build_cart")

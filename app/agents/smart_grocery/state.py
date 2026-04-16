@@ -30,6 +30,18 @@ class CartItem(TypedDict):
     aisle: str | None
 
 
+class NearbyStore(TypedDict):
+    store_id: str
+    name: str
+    slug: str                  # matches price_comparison keys, e.g. 'walmart'
+    distance_miles: float | None
+    insight: str               # human-readable reason, e.g. "Lowest prices nearby"
+    insight_type: str          # 'price' | 'quality' | 'bulk' | 'balanced'
+    recommended: bool          # True for the top-scored store
+    supports_delivery: bool
+    supports_pickup: bool
+
+
 class SmartGroceryState(TypedDict):
     user_id: str
 
@@ -47,6 +59,10 @@ class SmartGroceryState(TypedDict):
     saved_recipes: list[dict]
     existing_grocery_items: list[dict]
     user_preferences: dict       # dietary_tags, allergies, household_size, weekly_budget
+    user_address: str | None     # zip code from user's default address
+
+    # Nearby stores ranked by user preference fit, populated by resolve_stores
+    nearby_stores: list[NearbyStore]
 
     # Claude analysis output
     missing_items: list[MissingItem]

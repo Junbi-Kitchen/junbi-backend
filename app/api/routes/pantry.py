@@ -1,13 +1,25 @@
+import base64
+import json
+import logging
 import random
 import uuid
+from datetime import date, timedelta
 from typing import Literal, Optional
 
+import anthropic
 import psycopg2.extras
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+_SCAN_SUPPORTED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+# Claude's vision limit is 5 MB for base64-encoded images
+_SCAN_MAX_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(prefix="/pantry", tags=["pantry"])
 
@@ -312,6 +324,120 @@ async def ocr_receipt(
         new["addedVia"] = "receipt"
         result.append(new)
     return {"items": result}
+
+
+@router.post("/scan")
+async def scan_pantry(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Accepts a photo of a pantry or fridge and uses Claude vision to detect
+    ingredients, estimate quantities, and assess freshness.
+
+    Returns detected items for user review — does NOT write to DB.
+    To save confirmed items call POST /pantry/bulk with addedVia='scan'.
+    """
+    content_type = (image.content_type or "image/jpeg").lower()
+    if content_type not in _SCAN_SUPPORTED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image format '{content_type}'. Use JPEG, PNG, or WebP.",
+        )
+
+    image_bytes = await image.read()
+    if len(image_bytes) > _SCAN_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image exceeds 5 MB limit.")
+
+    if not settings.ANTHROPIC_API_KEY:
+        logger.warning("ANTHROPIC_API_KEY not set — returning stub scan results")
+        return {"items": _stub_scan_items(), "model": "stub", "count": len(_stub_scan_items())}
+
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    prompt = """Analyze this image of a pantry or refrigerator and identify all visible food items.
+
+For each item return a JSON object with:
+- name: string — simple common ingredient name (e.g. "eggs", "milk", "spinach", "cheddar cheese")
+- quantity: number — estimated visible amount
+- unit: string — e.g. "count", "oz", "lbs", "bunch", "carton", "bottle", "bag"
+- category: string — one of: produce, proteins, dairy, grains, frozen, pantry, condiments, spices, bakery, beverages
+- estimatedExpiryDays: number | null — days until likely expiry based on visible condition (null if uncertain)
+- freshnessNote: string — brief condition note, e.g. "Looks fresh", "Slightly wilted", "Near expiry — use soon"
+- confidence: "high" | "medium" | "low"
+
+Rules:
+- Only include items identifiable with at least low confidence
+- For partially-used containers, estimate remaining quantity
+- For produce, judge freshness from color, texture, and visible wilting or spoilage
+- For packaged items, flag if packaging looks damaged or bloated
+- Skip non-food items (napkins, containers without visible contents, etc.)
+
+Respond with ONLY a valid JSON array, no explanation."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": content_type, "data": image_b64},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        detected = json.loads(raw)
+    except Exception as e:
+        logger.error("Pantry scan Claude call failed: %s", e)
+        raise HTTPException(status_code=502, detail="Image analysis failed. Please try again.")
+
+    today = date.today()
+    items = []
+    for item in detected:
+        expiry_days = item.get("estimatedExpiryDays")
+        expiry_date = (today + timedelta(days=int(expiry_days))).isoformat() if expiry_days else None
+        category = USDA_SLUG_TO_CATEGORY.get(item.get("category", "pantry"), "pantry")
+        items.append({
+            "name": item.get("name", ""),
+            "quantity": float(item.get("quantity") or 1),
+            "unit": item.get("unit", "count"),
+            "category": category,
+            "expiryDate": expiry_date,
+            "addedVia": "scan",
+            "freshnessNote": item.get("freshnessNote"),
+            "confidence": item.get("confidence", "medium"),
+        })
+
+    return {"items": items, "model": "claude-sonnet-4-6", "count": len(items)}
+
+
+def _stub_scan_items() -> list[dict]:
+    """Dev stub returned when ANTHROPIC_API_KEY is not set."""
+    today = date.today()
+    return [
+        {"name": "eggs", "quantity": 6, "unit": "count", "category": "dairy",
+         "expiryDate": (today + timedelta(days=14)).isoformat(),
+         "addedVia": "scan", "freshnessNote": "Looks fresh", "confidence": "high"},
+        {"name": "spinach", "quantity": 1, "unit": "bag", "category": "produce",
+         "expiryDate": (today + timedelta(days=3)).isoformat(),
+         "addedVia": "scan", "freshnessNote": "Slightly wilted — use soon", "confidence": "high"},
+        {"name": "cheddar cheese", "quantity": 8, "unit": "oz", "category": "dairy",
+         "expiryDate": (today + timedelta(days=21)).isoformat(),
+         "addedVia": "scan", "freshnessNote": "Looks fresh", "confidence": "medium"},
+        {"name": "milk", "quantity": 0.5, "unit": "gallon", "category": "dairy",
+         "expiryDate": (today + timedelta(days=5)).isoformat(),
+         "addedVia": "scan", "freshnessNote": "Near expiry — use soon", "confidence": "high"},
+    ]
 
 
 @router.post("/bulk", status_code=201)

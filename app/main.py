@@ -1,4 +1,6 @@
 import logging
+from contextlib import asynccontextmanager
+
 import firebase_admin
 from firebase_admin import credentials
 
@@ -6,10 +8,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
+from app.db import get_async_pool, close_async_pool
 from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await get_async_pool()   # warm up async DB pool for agent nodes
+    yield
+    await close_async_pool()
+
 
 if settings.FIREBASE_SERVICE_ACCOUNT_KEY:
     logger.info("Firebase: initializing with service account key")
@@ -23,6 +34,7 @@ app = FastAPI(
     title="Gook Backend",
     description="API for Gook — Grocery and Cooking",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

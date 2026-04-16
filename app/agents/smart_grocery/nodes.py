@@ -2,21 +2,22 @@
 LangGraph nodes for the Smart Grocery agent.
 
 Node execution order:
-  load_context → analyze_pantry → search_store → compare_prices
+  load_context → resolve_stores → analyze_pantry → search_store → compare_prices
       → build_cart → [INTERRUPT: user confirms] → place_order → finalize
 """
 
+import asyncio
 import json
 import logging
 
 import anthropic
 from langgraph.types import interrupt
 
-from app.db import get_pool
+from app.db import get_async_pool
 from config import settings
 
 from .state import SmartGroceryState
-from .tools.instacart import call_instacart_service, execute_checkout
+from .tools.instacart import call_instacart_service, execute_checkout, get_stores
 
 logger = logging.getLogger(__name__)
 
@@ -30,105 +31,280 @@ _STAPLES = [
 # Node 1 — Load context from DB
 # ---------------------------------------------------------------------------
 
-def load_context(state: SmartGroceryState) -> dict:
-    """Pull pantry, saved recipes, grocery list, and preferences from DB."""
+async def load_context(state: SmartGroceryState) -> dict:
+    """Pull pantry, saved recipes, grocery list, and preferences from DB in parallel."""
     uid = state["user_id"]
-    pool = get_pool()
-    conn = pool.getconn()
-    try:
-        cur = conn.cursor()
+    pool = await get_async_pool()
 
-        # Pantry with freshness
-        cur.execute("""
-            SELECT p.id, p.name, p.quantity, p.unit, p.expiry_date,
-                   p.freshness_status, p.location,
-                   COALESCE(ic.slug, 'pantry') AS category
-            FROM pantry_items_with_freshness p
-            LEFT JOIN ingredients i ON i.id = p.ingredient_id
-            LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
-            WHERE p.user_id = %s AND p.is_active = true
-            ORDER BY p.expiry_date ASC NULLS LAST
-        """, (uid,))
-        pantry_items = [
-            {
-                "id": str(r["id"]),
-                "name": r["name"] or "",
-                "quantity": float(r["quantity"] or 0),
-                "unit": r["unit"] or "",
-                "expiryDate": r["expiry_date"].isoformat() if r["expiry_date"] else None,
-                "freshnessStatus": r["freshness_status"],
-                "category": r["category"],
+    async def _pantry(conn):
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT p.id, p.name, p.quantity, p.unit, p.expiry_date,
+                       p.freshness_status, p.location,
+                       COALESCE(ic.slug, 'pantry') AS category
+                FROM pantry_items_with_freshness p
+                LEFT JOIN ingredients i ON i.id = p.ingredient_id
+                LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
+                WHERE p.user_id = %s AND p.is_active = true
+                ORDER BY p.expiry_date ASC NULLS LAST
+            """, (uid,))
+            return [
+                {
+                    "id": str(r["id"]),
+                    "name": r["name"] or "",
+                    "quantity": float(r["quantity"] or 0),
+                    "unit": r["unit"] or "",
+                    "expiryDate": r["expiry_date"].isoformat() if r["expiry_date"] else None,
+                    "freshnessStatus": r["freshness_status"],
+                    "category": r["category"],
+                }
+                for r in await cur.fetchall()
+            ]
+
+    async def _recipes(conn):
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT r.id, r.title, r.cook_time_mins,
+                       json_agg(json_build_object(
+                           'name', COALESCE(ri.display_text, i.name),
+                           'quantity', ri.quantity,
+                           'unit', ri.unit
+                       )) AS ingredients
+                FROM recipes r
+                JOIN user_recipe_interactions uri ON uri.recipe_id = r.id
+                JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+                LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+                WHERE uri.user_id = %s AND uri.action = 'saved'
+                GROUP BY r.id
+            """, (uid,))
+            return [
+                {
+                    "id": str(r["id"]),
+                    "title": r["title"],
+                    "cookTimeMinutes": r["cook_time_mins"],
+                    "ingredients": r["ingredients"] or [],
+                }
+                for r in await cur.fetchall()
+            ]
+
+    async def _grocery(conn):
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT gi.name, gi.quantity, gi.unit, gi.is_checked
+                FROM grocery_items gi
+                JOIN grocery_lists gl ON gl.id = gi.list_id
+                WHERE gl.user_id = %s AND gl.status = 'active'
+            """, (uid,))
+            return [
+                {"name": r["name"], "quantity": float(r["quantity"] or 0),
+                 "unit": r["unit"] or "", "checked": r["is_checked"]}
+                for r in await cur.fetchall()
+            ]
+
+    async def _prefs(conn):
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT dietary_tags, allergies, cuisines, household_size, weekly_budget
+                FROM user_preferences WHERE user_id = %s
+            """, (uid,))
+            row = await cur.fetchone()
+            return {
+                "dietaryTags": list(row["dietary_tags"] or []) if row else [],
+                "allergies": list(row["allergies"] or []) if row else [],
+                "cuisines": list(row["cuisines"] or []) if row else [],
+                "householdSize": row["household_size"] if row else 1,
+                "weeklyBudget": float(row["weekly_budget"] or 0) if row else 0,
             }
-            for r in cur.fetchall()
-        ]
 
-        # Saved recipes with their ingredients
-        cur.execute("""
-            SELECT r.id, r.title, r.cook_time_mins,
-                   json_agg(json_build_object(
-                       'name', COALESCE(ri.display_text, i.name),
-                       'quantity', ri.quantity,
-                       'unit', ri.unit
-                   )) AS ingredients
-            FROM recipes r
-            JOIN user_recipe_interactions uri ON uri.recipe_id = r.id
-            JOIN recipe_ingredients ri ON ri.recipe_id = r.id
-            LEFT JOIN ingredients i ON i.id = ri.ingredient_id
-            WHERE uri.user_id = %s AND uri.action = 'saved'
-            GROUP BY r.id
-        """, (uid,))
-        saved_recipes = [
-            {
-                "id": str(r["id"]),
-                "title": r["title"],
-                "cookTimeMinutes": r["cook_time_mins"],
-                "ingredients": r["ingredients"] or [],
-            }
-            for r in cur.fetchall()
-        ]
+    async def _address(conn):
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT zip FROM user_addresses WHERE user_id = %s AND is_default = true LIMIT 1",
+                (uid,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                await cur.execute(
+                    "SELECT zip FROM user_addresses WHERE user_id = %s ORDER BY created_at LIMIT 1",
+                    (uid,)
+                )
+                row = await cur.fetchone()
+            return row["zip"] if row else None
 
-        # Active grocery list items
-        cur.execute("""
-            SELECT gi.name, gi.quantity, gi.unit, gi.is_checked
-            FROM grocery_items gi
-            JOIN grocery_lists gl ON gl.id = gi.list_id
-            WHERE gl.user_id = %s AND gl.status = 'active'
-        """, (uid,))
-        existing_grocery_items = [
-            {"name": r["name"], "quantity": float(r["quantity"] or 0),
-             "unit": r["unit"] or "", "checked": r["is_checked"]}
-            for r in cur.fetchall()
-        ]
-
-        # User preferences
-        cur.execute("""
-            SELECT dietary_tags, allergies, cuisines, household_size, weekly_budget
-            FROM user_preferences WHERE user_id = %s
-        """, (uid,))
-        pref_row = cur.fetchone()
-        user_preferences = {
-            "dietaryTags": list(pref_row["dietary_tags"] or []) if pref_row else [],
-            "allergies": list(pref_row["allergies"] or []) if pref_row else [],
-            "cuisines": list(pref_row["cuisines"] or []) if pref_row else [],
-            "householdSize": pref_row["household_size"] if pref_row else 1,
-            "weeklyBudget": float(pref_row["weekly_budget"] or 0) if pref_row else 0,
-        }
-
-        conn.commit()
-    finally:
-        pool.putconn(conn)
+    async with (
+        pool.connection() as c1,
+        pool.connection() as c2,
+        pool.connection() as c3,
+        pool.connection() as c4,
+        pool.connection() as c5,
+    ):
+        pantry_items, saved_recipes, existing_grocery_items, user_preferences, user_address = (
+            await asyncio.gather(_pantry(c1), _recipes(c2), _grocery(c3), _prefs(c4), _address(c5))
+        )
 
     return {
         "pantry_items": pantry_items,
         "saved_recipes": saved_recipes,
         "existing_grocery_items": existing_grocery_items,
         "user_preferences": user_preferences,
+        "user_address": user_address,
         "error": None,
     }
 
 
 # ---------------------------------------------------------------------------
-# Node 2 — Claude analyzes pantry and identifies what to buy
+# Node 2 — Resolve nearby stores and rank by user preference fit
+# ---------------------------------------------------------------------------
+
+# Maps store names returned by Instacart → internal slugs used in price_comparison
+_NAME_TO_SLUG: dict[str, str] = {
+    "walmart": "walmart",
+    "costco": "costco",
+    "aldi": "aldi",
+    "kroger": "kroger",
+    "publix": "publix",
+    "whole foods": "whole_foods",
+    "whole foods market": "whole_foods",
+    "trader joe's": "trader_joes",
+    "trader joes": "trader_joes",
+    "sprouts": "sprouts",
+    "sprouts farmers market": "sprouts",
+    "target": "target",
+    "safeway": "safeway",
+    "albertsons": "albertsons",
+    "heb": "heb",
+    "meijer": "meijer",
+}
+
+# price_rank: 1=cheapest, 5=most expensive
+# quality_rank: 1=lowest, 5=highest (freshness, organic selection, variety)
+_STORE_TRAITS: dict[str, dict] = {
+    "walmart":     {"price_rank": 1, "quality_rank": 2, "bulk": False},
+    "aldi":        {"price_rank": 2, "quality_rank": 2, "bulk": False},
+    "costco":      {"price_rank": 1, "quality_rank": 3, "bulk": True},
+    "kroger":      {"price_rank": 3, "quality_rank": 3, "bulk": False},
+    "target":      {"price_rank": 3, "quality_rank": 3, "bulk": False},
+    "safeway":     {"price_rank": 3, "quality_rank": 3, "bulk": False},
+    "albertsons":  {"price_rank": 3, "quality_rank": 3, "bulk": False},
+    "heb":         {"price_rank": 2, "quality_rank": 4, "bulk": False},
+    "meijer":      {"price_rank": 2, "quality_rank": 3, "bulk": False},
+    "publix":      {"price_rank": 4, "quality_rank": 4, "bulk": False},
+    "trader_joes": {"price_rank": 3, "quality_rank": 4, "bulk": False},
+    "sprouts":     {"price_rank": 4, "quality_rank": 5, "bulk": False},
+    "whole_foods": {"price_rank": 5, "quality_rank": 5, "bulk": False},
+}
+
+_QUALITY_TAGS = {"organic", "non-gmo", "gluten-free", "vegan", "vegetarian", "keto", "paleo"}
+
+
+def _score_store(slug: str, prefs: dict) -> tuple[float, str, str]:
+    """
+    Returns (score, insight_text, insight_type) for a store given user preferences.
+    Higher score = better fit.
+    """
+    traits = _STORE_TRAITS.get(slug, {"price_rank": 3, "quality_rank": 3, "bulk": False})
+    price_rank = traits["price_rank"]
+    quality_rank = traits["quality_rank"]
+    is_bulk = traits["bulk"]
+
+    budget = prefs.get("weeklyBudget", 0)
+    dietary_tags = {t.lower() for t in prefs.get("dietaryTags", [])}
+    household_size = prefs.get("householdSize", 1)
+
+    is_price_sensitive = 0 < budget <= 150
+    is_quality_sensitive = bool(dietary_tags & _QUALITY_TAGS)
+    wants_bulk = household_size >= 4
+
+    score = 0.0
+    if is_price_sensitive:
+        score += (6 - price_rank) * 2.5
+    if is_quality_sensitive:
+        score += quality_rank * 2.5
+    if wants_bulk and is_bulk:
+        score += 4.0
+    if not is_price_sensitive and not is_quality_sensitive:
+        # balanced: reward stores that aren't extreme in either direction
+        score += (4 - abs(price_rank - 2.5)) + (4 - abs(quality_rank - 3.5))
+
+    # Build insight text
+    if is_bulk and wants_bulk:
+        insight = f"Best bulk value — great for your household of {household_size}"
+        insight_type = "bulk"
+    elif price_rank <= 2 and is_price_sensitive:
+        insight = "Lowest prices nearby — best fit for your budget"
+        insight_type = "price"
+    elif quality_rank >= 4 and is_quality_sensitive:
+        insight = "Best produce quality and freshness — matches your dietary preferences"
+        insight_type = "quality"
+    elif price_rank <= 2:
+        insight = "Cheapest option nearby"
+        insight_type = "price"
+    elif quality_rank >= 4:
+        insight = "Better produce quality and longer shelf life"
+        insight_type = "quality"
+    else:
+        insight = "Good balance of price and quality"
+        insight_type = "balanced"
+
+    return score, insight, insight_type
+
+
+async def resolve_stores(state: SmartGroceryState) -> dict:
+    """
+    Fetch stores near the user's zip code, score them by preference fit,
+    and set the recommended store as the active store_preference.
+    The full ranked list is passed to human_checkpoint so the user can change it.
+    """
+    zip_code = state.get("user_address")
+    if not zip_code:
+        logger.info("resolve_stores: no zip code available, skipping store resolution")
+        return {"nearby_stores": [], "error": None}
+
+    raw_stores = await get_stores(zip_code)
+    prefs = state.get("user_preferences", {})
+
+    scored: list[tuple[float, dict]] = []
+    for store in raw_stores:
+        name = store.get("name", "").lower().strip()
+        slug = _NAME_TO_SLUG.get(name, name.replace(" ", "_"))
+        score, insight, insight_type = _score_store(slug, prefs)
+        scored.append((score, {
+            "store_id": store["store_id"],
+            "name": store["name"],
+            "slug": slug,
+            "distance_miles": store.get("distance_miles"),
+            "insight": insight,
+            "insight_type": insight_type,
+            "recommended": False,
+            "supports_delivery": store.get("supports_delivery", True),
+            "supports_pickup": store.get("supports_pickup", False),
+        }))
+
+    # Sort: highest score first, ties broken by distance
+    scored.sort(key=lambda x: (-x[0], x[1].get("distance_miles") or 999))
+    nearby_stores = [s for _, s in scored]
+
+    if nearby_stores:
+        nearby_stores[0]["recommended"] = True
+
+    updates: dict = {"nearby_stores": nearby_stores, "error": None}
+
+    # Only override store_preference if the user hasn't already picked one
+    current_pref = state.get("store_preference", "instacart")
+    if nearby_stores and current_pref in ("instacart", "", None):
+        best = nearby_stores[0]
+        updates["store_preference"] = best["slug"]
+        updates["store_id"] = best["store_id"]
+        logger.info(
+            "resolve_stores: recommended %s (score=%.1f, insight_type=%s)",
+            best["name"], scored[0][0], best["insight_type"],
+        )
+
+    return updates
+
+
+# ---------------------------------------------------------------------------
+# Node 3 — Claude analyzes pantry and identifies what to buy
 # ---------------------------------------------------------------------------
 
 def analyze_pantry(state: SmartGroceryState) -> dict:
@@ -417,10 +593,17 @@ def human_checkpoint(state: SmartGroceryState) -> dict:
         "price_comparison": state.get("price_comparison", {}),
         "savings_summary": state.get("savings_summary", {}),
         "store": state.get("store_preference"),
+        "nearby_stores": state.get("nearby_stores", []),
         "delivery_preference": state.get("delivery_preference"),
         "missing_items_count": len(state.get("missing_items", [])),
     })
-    return {"order_confirmed": confirmation.get("confirmed", False)}
+    # Frontend may send back a different store_preference if the user changed it
+    updates: dict = {"order_confirmed": confirmation.get("confirmed", False)}
+    if "store_preference" in confirmation:
+        updates["store_preference"] = confirmation["store_preference"]
+    if "store_id" in confirmation:
+        updates["store_id"] = confirmation["store_id"]
+    return updates
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +668,7 @@ async def place_order(state: SmartGroceryState) -> dict:
 # Node 8 — Write grocery items back to DB
 # ---------------------------------------------------------------------------
 
-def finalize(state: SmartGroceryState) -> dict:
+async def finalize(state: SmartGroceryState) -> dict:
     """
     After a confirmed order, write the cart items to the active grocery list
     and create an order record in the DB.
@@ -495,68 +678,59 @@ def finalize(state: SmartGroceryState) -> dict:
 
     uid = state["user_id"]
     cart_items = state.get("cart_items", [])
-    order_result = state.get("order_result", {})
+    pool = await get_async_pool()
 
-    pool = get_pool()
-    conn = pool.getconn()
     try:
-        cur = conn.cursor()
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # Get or create active grocery list
+                await cur.execute(
+                    "SELECT id FROM grocery_lists WHERE user_id = %s AND status = 'active' ORDER BY created_at LIMIT 1",
+                    (uid,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    list_id = str(row["id"])
+                else:
+                    await cur.execute(
+                        "INSERT INTO grocery_lists (user_id, name, status) VALUES (%s, 'My List', 'active') RETURNING id",
+                        (uid,)
+                    )
+                    list_id = str((await cur.fetchone())["id"])
 
-        # Get or create active grocery list
-        cur.execute(
-            "SELECT id FROM grocery_lists WHERE user_id = %s AND status = 'active' ORDER BY created_at LIMIT 1",
-            (uid,)
-        )
-        row = cur.fetchone()
-        if row:
-            list_id = str(row["id"])
-        else:
-            cur.execute(
-                "INSERT INTO grocery_lists (user_id, name, status) VALUES (%s, 'My List', 'active') RETURNING id",
-                (uid,)
-            )
-            list_id = str(cur.fetchone()["id"])
+                # Upsert cart items into grocery list
+                for item in cart_items:
+                    name = item.get("name", "")
+                    if not name:
+                        continue
 
-        # Upsert cart items into grocery list
-        for item in cart_items:
-            name = item.get("name", "")
-            if not name:
-                continue
+                    await cur.execute(
+                        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+                        (name,)
+                    )
+                    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
+                    ingredient_id = str((await cur.fetchone())["id"])
 
-            # Resolve ingredient
-            cur.execute(
-                "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
-                (name,)
-            )
-            cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-            ingredient_id = str(cur.fetchone()["id"])
+                    await cur.execute("""
+                        INSERT INTO grocery_items
+                            (list_id, name, ingredient_id, quantity, unit, aisle, estimated_price)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        list_id, name, ingredient_id,
+                        item.get("quantity", 1),
+                        item.get("unit", ""),
+                        item.get("aisle", "Pantry"),
+                        item.get("estimated_price"),
+                    ))
 
-            cur.execute("""
-                INSERT INTO grocery_items
-                    (list_id, name, ingredient_id, quantity, unit, aisle, estimated_price)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                list_id, name, ingredient_id,
-                item.get("quantity", 1),
-                item.get("unit", ""),
-                item.get("aisle", "Pantry"),
-                item.get("estimated_price"),
-            ))
-
-        # Update grocery list estimated total
-        cur.execute(
-            "UPDATE grocery_lists SET estimated_total = %s WHERE id = %s",
-            (state.get("cart_total"), list_id)
-        )
-
-        conn.commit()
+                # Update grocery list estimated total
+                await cur.execute(
+                    "UPDATE grocery_lists SET estimated_total = %s WHERE id = %s",
+                    (state.get("cart_total"), list_id)
+                )
     except Exception as e:
-        conn.rollback()
         logger.error("finalize DB write failed: %s", e)
-        pool.putconn(conn)
         return {"grocery_list_id": None, "error": str(e)}
-    finally:
-        pool.putconn(conn)
 
     return {"grocery_list_id": list_id, "error": None}
 
