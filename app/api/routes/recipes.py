@@ -39,10 +39,10 @@ class CreateRecipeRequest(BaseModel):
     nutrition: dict = {}
 
 
-def _build_recipe(cur, row: dict) -> dict:
+async def _build_recipe(cur, row: dict) -> dict:
     rid = row["id"]
 
-    cur.execute("""
+    await cur.execute("""
         SELECT ri.display_text AS name, ri.quantity, ri.unit,
                COALESCE(ic.slug, '') AS category
         FROM recipe_ingredients ri
@@ -58,10 +58,10 @@ def _build_recipe(cur, row: dict) -> dict:
             "unit": r["unit"] or "",
             "category": r["category"],
         }
-        for r in cur.fetchall()
+        for r in await cur.fetchall()
     ]
 
-    cur.execute("""
+    await cur.execute("""
         SELECT step_number, instruction, duration_minutes AS timer_minutes
         FROM recipe_steps WHERE recipe_id = %s ORDER BY step_number
     """, (rid,))
@@ -70,11 +70,11 @@ def _build_recipe(cur, row: dict) -> dict:
             "instruction": r["instruction"],
             "timerMinutes": r["timer_minutes"],
         }
-        for r in cur.fetchall()
+        for r in await cur.fetchall()
     ]
 
-    cur.execute("SELECT tag FROM recipe_tags WHERE recipe_id = %s", (rid,))
-    tags = [r["tag"] for r in cur.fetchall()]
+    await cur.execute("SELECT tag FROM recipe_tags WHERE recipe_id = %s", (rid,))
+    tags = [r["tag"] for r in await cur.fetchall()]
 
     source = row.get("creator_handle") or row.get("source_url") or ""
     imported_from = row.get("source_type") or "manual"
@@ -104,21 +104,21 @@ def _build_recipe(cur, row: dict) -> dict:
     }
 
 
-def _resolve_ingredient(cur, name: str) -> str:
-    cur.execute(
+async def _resolve_ingredient(cur, name: str) -> str:
+    await cur.execute(
         "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
         (name,),
     )
-    cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str(cur.fetchone()["id"])
+    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
+    return str((await cur.fetchone())["id"])
 
 
-def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
+async def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
     difficulty = DIFFICULTY_MAP.get(body.difficulty, "medium")
     source_type = SOURCE_TYPE_MAP.get(body.importedFrom, "manual")
     nutrition = body.nutrition or {}
 
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO recipes (
             title, description, image_url, blurhash, cook_time_mins, difficulty,
             source_type, source_url, creator_handle,
@@ -136,45 +136,45 @@ def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
         nutrition.get("carbsG"), nutrition.get("fatG"),
         user_id, False,
     ))
-    row = dict(cur.fetchone())
+    row = dict(await cur.fetchone())
     rid = row["id"]
 
     for idx, ing in enumerate(body.ingredients):
         name = ing.get("name", "")
         if not name:
             continue
-        ingredient_id = _resolve_ingredient(cur, name)
-        cur.execute("""
+        ingredient_id = await _resolve_ingredient(cur, name)
+        await cur.execute("""
             INSERT INTO recipe_ingredients
                 (recipe_id, ingredient_id, quantity, unit, display_text, order_index)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (rid, ingredient_id, ing.get("quantity"), ing.get("unit"), name, idx))
 
     for step in body.steps:
-        cur.execute("""
+        await cur.execute("""
             INSERT INTO recipe_steps (recipe_id, step_number, instruction, duration_minutes)
             VALUES (%s, %s, %s, %s)
         """, (rid, step.get("stepNumber", step.get("step_number", 1)),
               step.get("instruction", ""), step.get("timerMinutes")))
 
     for tag in body.tags:
-        cur.execute("""
+        await cur.execute("""
             INSERT INTO recipe_tags (recipe_id, tag) VALUES (%s, %s)
             ON CONFLICT (recipe_id, tag) DO NOTHING
         """, (rid, tag))
 
     # Auto-save for the creator
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO user_recipe_interactions (user_id, recipe_id, action)
         VALUES (%s, %s, 'saved')
         ON CONFLICT (user_id, recipe_id, action) DO NOTHING
     """, (user_id, rid))
 
-    return _build_recipe(cur, row)
+    return await _build_recipe(cur, row)
 
 
 @router.get("/feed")
-def get_feed(
+async def get_feed(
     tags: Optional[str] = Query(None),
     cursor: Optional[str] = Query(None),
     limit: int = Query(20, le=50),
@@ -186,14 +186,14 @@ def get_feed(
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
 
     # Recipes the user has already interacted with (saved or skipped)
-    cur.execute("""
+    await cur.execute("""
         SELECT recipe_id FROM user_recipe_interactions
         WHERE user_id = %s AND action IN ('saved', 'skipped')
     """, (uid,))
-    excluded = {str(r["recipe_id"]) for r in cur.fetchall()}
+    excluded = {str(r["recipe_id"]) for r in await cur.fetchall()}
 
     if cursor:
-        cur.execute("""
+        await cur.execute("""
             SELECT r.* FROM recipes r
             WHERE (r.is_global = true OR r.created_by = %s)
               AND r.created_at < %s::timestamptz
@@ -201,26 +201,22 @@ def get_feed(
             LIMIT %s
         """, (uid, cursor, limit + 1))
     else:
-        cur.execute("""
+        await cur.execute("""
             SELECT r.* FROM recipes r
             WHERE (r.is_global = true OR r.created_by = %s)
             ORDER BY r.created_at DESC
             LIMIT %s
         """, (uid, limit + 1))
 
-    rows = [dict(r) for r in cur.fetchall()]
+    rows = [dict(r) for r in await cur.fetchall()]
 
     # Filter excluded + tags in Python (simpler than complex SQL for now)
-    filtered = [
-        r for r in rows
-        if str(r["id"]) not in excluded
-    ]
+    filtered = [r for r in rows if str(r["id"]) not in excluded]
     if tag_list:
-        # Need to check tags — do a quick lookup per recipe
         result = []
         for row in filtered:
-            cur.execute("SELECT tag FROM recipe_tags WHERE recipe_id = %s", (row["id"],))
-            recipe_tags = {r["tag"] for r in cur.fetchall()}
+            await cur.execute("SELECT tag FROM recipe_tags WHERE recipe_id = %s", (row["id"],))
+            recipe_tags = {r["tag"] for r in await cur.fetchall()}
             if any(t in recipe_tags for t in tag_list):
                 result.append(row)
         filtered = result
@@ -229,14 +225,15 @@ def get_feed(
     has_more = len(filtered) > limit
     next_cursor = page[-1]["created_at"].isoformat() if has_more and page else None
 
-    return {
-        "recipes": [_build_recipe(cur, r) for r in page],
-        "next_cursor": next_cursor,
-    }
+    recipes = []
+    for r in page:
+        recipes.append(await _build_recipe(cur, r))
+
+    return {"recipes": recipes, "next_cursor": next_cursor}
 
 
 @router.get("/saved")
-def get_saved(
+async def get_saved(
     cursor: Optional[str] = Query(None),
     limit: int = Query(20, le=50),
     current_user: dict = Depends(get_current_user),
@@ -246,7 +243,7 @@ def get_saved(
     uid = current_user["id"]
 
     if cursor:
-        cur.execute("""
+        await cur.execute("""
             SELECT r.*, uri.created_at AS saved_at
             FROM recipes r
             JOIN user_recipe_interactions uri ON uri.recipe_id = r.id
@@ -256,7 +253,7 @@ def get_saved(
             LIMIT %s
         """, (uid, cursor, limit + 1))
     else:
-        cur.execute("""
+        await cur.execute("""
             SELECT r.*, uri.created_at AS saved_at
             FROM recipes r
             JOIN user_recipe_interactions uri ON uri.recipe_id = r.id
@@ -265,33 +262,34 @@ def get_saved(
             LIMIT %s
         """, (uid, limit + 1))
 
-    rows = [dict(r) for r in cur.fetchall()]
+    rows = [dict(r) for r in await cur.fetchall()]
     has_more = len(rows) > limit
     page = rows[:limit]
     next_cursor = page[-1]["saved_at"].isoformat() if has_more and page else None
 
-    return {
-        "recipes": [_build_recipe(cur, r) for r in page],
-        "next_cursor": next_cursor,
-    }
+    recipes = []
+    for r in page:
+        recipes.append(await _build_recipe(cur, r))
+
+    return {"recipes": recipes, "next_cursor": next_cursor}
 
 
 @router.get("/{recipe_id}")
-def get_recipe(
+async def get_recipe(
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("SELECT * FROM recipes WHERE id = %s::uuid", (recipe_id,))
-    row = cur.fetchone()
+    await cur.execute("SELECT * FROM recipes WHERE id = %s::uuid", (recipe_id,))
+    row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Recipe not found")
-    return _build_recipe(cur, dict(row))
+    return await _build_recipe(cur, dict(row))
 
 
 @router.post("/import")
-def import_recipe(
+async def import_recipe(
     body: ImportRequest,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
@@ -303,29 +301,29 @@ def import_recipe(
         source=body.url,
     )
     cur = db.cursor()
-    return _insert_recipe(cur, current_user["id"], create_body)
+    return await _insert_recipe(cur, current_user["id"], create_body)
 
 
 @router.post("")
-def create_recipe(
+async def create_recipe(
     body: CreateRecipeRequest,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
-    return _insert_recipe(db.cursor(), current_user["id"], body)
+    return await _insert_recipe(db.cursor(), current_user["id"], body)
 
 
 @router.post("/saved/{recipe_id}", status_code=200)
-def save_recipe(
+async def save_recipe(
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("SELECT id FROM recipes WHERE id = %s::uuid", (recipe_id,))
-    if not cur.fetchone():
+    await cur.execute("SELECT id FROM recipes WHERE id = %s::uuid", (recipe_id,))
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Recipe not found")
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO user_recipe_interactions (user_id, recipe_id, action)
         VALUES (%s, %s::uuid, 'saved')
         ON CONFLICT (user_id, recipe_id, action) DO NOTHING
@@ -334,13 +332,13 @@ def save_recipe(
 
 
 @router.delete("/saved/{recipe_id}", status_code=200)
-def unsave_recipe(
+async def unsave_recipe(
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("""
+    await cur.execute("""
         DELETE FROM user_recipe_interactions
         WHERE user_id = %s AND recipe_id = %s::uuid AND action = 'saved'
     """, (current_user["id"], recipe_id))
@@ -348,13 +346,13 @@ def unsave_recipe(
 
 
 @router.post("/skip/{recipe_id}", status_code=200)
-def skip_recipe(
+async def skip_recipe(
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO user_recipe_interactions (user_id, recipe_id, action)
         VALUES (%s, %s::uuid, 'skipped')
         ON CONFLICT (user_id, recipe_id, action) DO NOTHING

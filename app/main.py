@@ -1,4 +1,6 @@
 import logging
+from contextlib import asynccontextmanager
+
 import firebase_admin
 from firebase_admin import credentials
 
@@ -6,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
+from app.db import open_pool, close_pool
 from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents
 
 logging.basicConfig(level=logging.INFO)
@@ -19,10 +22,19 @@ else:
     logger.info("Firebase: initializing with ADC (Cloud Run / GCP environment expected)")
     firebase_admin.initialize_app(options={"projectId": settings.FIREBASE_PROJECT_ID})
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await open_pool()
+    yield
+    await close_pool()
+
+
 app = FastAPI(
     title="Gook Backend",
     description="API for Gook — Grocery and Cooking",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

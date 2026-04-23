@@ -1,6 +1,5 @@
 from typing import Optional
 
-import psycopg2.extras
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -46,29 +45,29 @@ class GenerateRequest(BaseModel):
     recipe_ids: list[str]
 
 
-def _resolve_ingredient(cur, name: str) -> str:
-    cur.execute(
+async def _resolve_ingredient(cur, name: str) -> str:
+    await cur.execute(
         "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
         (name,),
     )
-    cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str(cur.fetchone()["id"])
+    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
+    return str((await cur.fetchone())["id"])
 
 
-def _get_or_create_list(cur, user_id: str) -> str:
+async def _get_or_create_list(cur, user_id: str) -> str:
     """Return the active grocery list id for the user, creating one if needed."""
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM grocery_lists WHERE user_id = %s AND status = 'active' ORDER BY created_at LIMIT 1",
         (user_id,),
     )
-    row = cur.fetchone()
+    row = await cur.fetchone()
     if row:
         return str(row["id"])
-    cur.execute(
+    await cur.execute(
         "INSERT INTO grocery_lists (user_id, name, status) VALUES (%s, 'My List', 'active') RETURNING id",
         (user_id,),
     )
-    return str(cur.fetchone()["id"])
+    return str((await cur.fetchone())["id"])
 
 
 def _row_to_item(row: dict) -> dict:
@@ -84,47 +83,47 @@ def _row_to_item(row: dict) -> dict:
     }
 
 
-def _get_items(cur, list_id: str) -> tuple[list, list]:
-    cur.execute("""
+async def _get_items(cur, list_id: str) -> tuple[list, list]:
+    await cur.execute("""
         SELECT gi.*, r.title AS recipe_title
         FROM grocery_items gi
         LEFT JOIN recipes r ON r.id = gi.source_recipe_id
         WHERE gi.list_id = %s
         ORDER BY gi.sort_order, gi.created_at
     """, (list_id,))
-    items = [_row_to_item(dict(r)) for r in cur.fetchall()]
+    items = [_row_to_item(dict(r)) for r in await cur.fetchall()]
 
-    cur.execute("""
+    await cur.execute("""
         SELECT DISTINCT source_recipe_id::text
         FROM grocery_items
         WHERE list_id = %s AND source_recipe_id IS NOT NULL
     """, (list_id,))
-    linked = [r["source_recipe_id"] for r in cur.fetchall()]
+    linked = [r["source_recipe_id"] for r in await cur.fetchall()]
     return items, linked
 
 
 @router.get("")
-def get_grocery(
+async def get_grocery(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    list_id = _get_or_create_list(cur, current_user["id"])
-    items, linked = _get_items(cur, list_id)
+    list_id = await _get_or_create_list(cur, current_user["id"])
+    items, linked = await _get_items(cur, list_id)
     return {"items": items, "linkedRecipeIds": linked}
 
 
 @router.post("/items", status_code=201)
-def add_item(
+async def add_item(
     body: GroceryItemBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    list_id = _get_or_create_list(cur, current_user["id"])
-    ingredient_id = _resolve_ingredient(cur, body.name)
+    list_id = await _get_or_create_list(cur, current_user["id"])
+    ingredient_id = await _resolve_ingredient(cur, body.name)
     aisle = body.aisle or CATEGORY_TO_AISLE.get(body.category or "", "Pantry")
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO grocery_items
             (list_id, name, ingredient_id, quantity, unit, is_checked, aisle, source_recipe_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -135,29 +134,29 @@ def add_item(
         aisle,
         body.recipeId if body.recipeId else None,
     ))
-    new_id = str(cur.fetchone()["id"])
-    cur.execute("""
+    new_id = str((await cur.fetchone())["id"])
+    await cur.execute("""
         SELECT gi.*, r.title AS recipe_title
         FROM grocery_items gi LEFT JOIN recipes r ON r.id = gi.source_recipe_id
         WHERE gi.id = %s
     """, (new_id,))
-    return _row_to_item(dict(cur.fetchone()))
+    return _row_to_item(dict(await cur.fetchone()))
 
 
 @router.patch("/items/{item_id}")
-def update_item(
+async def update_item(
     item_id: str,
     body: UpdateGroceryItemBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    list_id = _get_or_create_list(cur, current_user["id"])
-    cur.execute(
+    list_id = await _get_or_create_list(cur, current_user["id"])
+    await cur.execute(
         "SELECT id FROM grocery_items WHERE id = %s AND list_id = %s",
         (item_id, list_id),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Grocery item not found")
 
     updates = body.model_dump(exclude_none=True)
@@ -173,44 +172,44 @@ def update_item(
 
     if set_clauses:
         params += [item_id, list_id]
-        cur.execute(
+        await cur.execute(
             f"UPDATE grocery_items SET {', '.join(set_clauses)} WHERE id = %s AND list_id = %s",
             params,
         )
 
-    cur.execute("""
+    await cur.execute("""
         SELECT gi.*, r.title AS recipe_title
         FROM grocery_items gi LEFT JOIN recipes r ON r.id = gi.source_recipe_id
         WHERE gi.id = %s
     """, (item_id,))
-    return _row_to_item(dict(cur.fetchone()))
+    return _row_to_item(dict(await cur.fetchone()))
 
 
 @router.delete("/items/{item_id}", status_code=200)
-def delete_item(
+async def delete_item(
     item_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    list_id = _get_or_create_list(cur, current_user["id"])
-    cur.execute(
+    list_id = await _get_or_create_list(cur, current_user["id"])
+    await cur.execute(
         "DELETE FROM grocery_items WHERE id = %s AND list_id = %s RETURNING id",
         (item_id, list_id),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Grocery item not found")
     return {"detail": "Deleted"}
 
 
 @router.delete("/checked", status_code=200)
-def clear_checked(
+async def clear_checked(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    list_id = _get_or_create_list(cur, current_user["id"])
-    cur.execute(
+    list_id = await _get_or_create_list(cur, current_user["id"])
+    await cur.execute(
         "DELETE FROM grocery_items WHERE list_id = %s AND is_checked = true",
         (list_id,),
     )
@@ -218,21 +217,21 @@ def clear_checked(
 
 
 @router.post("/generate")
-def generate_from_recipes(
+async def generate_from_recipes(
     body: GenerateRequest,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
     uid = current_user["id"]
-    list_id = _get_or_create_list(cur, uid)
+    list_id = await _get_or_create_list(cur, uid)
 
     if not body.recipe_ids:
-        items, linked = _get_items(cur, list_id)
+        items, linked = await _get_items(cur, list_id)
         return {"items": items, "linkedRecipeIds": linked}
 
     # Fetch recipe ingredients + pantry coverage
-    cur.execute("""
+    await cur.execute("""
         SELECT
             ri.display_text AS name,
             ri.quantity AS needed_qty,
@@ -255,7 +254,7 @@ def generate_from_recipes(
           AND ri.ingredient_id IS NOT NULL
     """, (uid, body.recipe_ids))
 
-    rows = cur.fetchall()
+    rows = await cur.fetchall()
 
     # Deduplicate by ingredient_id, sum quantities, subtract pantry
     from collections import defaultdict
@@ -290,11 +289,11 @@ def generate_from_recipes(
             )
             for v in aggregated.values()
         ]
-        psycopg2.extras.execute_values(cur, """
+        await cur.executemany("""
             INSERT INTO grocery_items
                 (list_id, name, ingredient_id, quantity, unit, aisle, source_recipe_id)
-            VALUES %s
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, rows_to_insert)
 
-    items, linked = _get_items(cur, list_id)
+    items, linked = await _get_items(cur, list_id)
     return {"items": items, "linkedRecipeIds": linked}

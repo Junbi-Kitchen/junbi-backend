@@ -1,42 +1,35 @@
-import threading
-import psycopg2.pool
-import psycopg2.extras
-from contextlib import contextmanager
+import psycopg
+import psycopg_pool
+from psycopg.rows import dict_row
 
 from config import settings
 
-_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_pool: psycopg_pool.AsyncConnectionPool | None = None
 
 
-def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+async def open_pool() -> None:
     global _pool
-    if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=2,
-            maxconn=10,
-            dsn=settings.DATABASE_URL,
-            cursor_factory=psycopg2.extras.RealDictCursor,
-        )
-    return _pool
+    _pool = psycopg_pool.AsyncConnectionPool(
+        conninfo=settings.DATABASE_URL,
+        min_size=2,
+        max_size=10,
+        kwargs={"row_factory": dict_row},
+        open=False,
+    )
+    await _pool.open()
 
 
-@contextmanager
-def _get_conn():
-    key = threading.get_ident()
-    conn = get_pool().getconn(key=key)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        get_pool().putconn(conn, key=key)
+async def close_pool() -> None:
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
 
 
-def get_db():
-    """FastAPI dependency — yields a psycopg2 connection (RealDictCursor).
+async def get_db():
+    """FastAPI dependency — yields a psycopg3 async connection (dict_row).
     Usage: db = Depends(get_db)
+    Commits on success, rolls back on exception, returns to pool when done.
     """
-    with _get_conn() as conn:
+    async with _pool.connection() as conn:
         yield conn

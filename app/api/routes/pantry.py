@@ -2,7 +2,6 @@ import random
 import uuid
 from typing import Literal, Optional
 
-import psycopg2.extras
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -96,14 +95,14 @@ class LogActionBody(BaseModel):
     estimatedValue: float = 0.0
 
 
-def _resolve_ingredient(cur, name: str) -> str:
+async def _resolve_ingredient(cur, name: str) -> str:
     """Upsert ingredient by name and return its UUID."""
-    cur.execute(
+    await cur.execute(
         "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
         (name,),
     )
-    cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str(cur.fetchone()["id"])
+    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
+    return str((await cur.fetchone())["id"])
 
 
 def _row_to_item(row: dict) -> dict:
@@ -124,8 +123,8 @@ def _row_to_item(row: dict) -> dict:
     }
 
 
-def _get_items(cur, user_id: str) -> list:
-    cur.execute("""
+async def _get_items(cur, user_id: str) -> list:
+    await cur.execute("""
         SELECT p.*, p.freshness_status,
                ic.slug AS ic_slug
         FROM pantry_items_with_freshness p
@@ -134,18 +133,18 @@ def _get_items(cur, user_id: str) -> list:
         WHERE p.user_id = %s AND p.is_active = true
         ORDER BY p.expiry_date ASC NULLS LAST
     """, (user_id,))
-    return [_row_to_item(dict(r)) for r in cur.fetchall()]
+    return [_row_to_item(dict(r)) for r in await cur.fetchall()]
 
 
 @router.get("/ingredients/search")
-def search_ingredients(
+async def search_ingredients(
     q: str = "",
     limit: int = 20,
     db=Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ) -> list:
     cur = db.cursor()
-    cur.execute("""
+    await cur.execute("""
         SELECT i.name, COALESCE(ic.slug, 'pantry') AS category
         FROM ingredients i
         LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
@@ -155,25 +154,25 @@ def search_ingredients(
     """, (f"%{q}%", limit))
     return [
         {"name": r["name"], "category": USDA_SLUG_TO_CATEGORY.get(r["category"], "pantry")}
-        for r in cur.fetchall()
+        for r in await cur.fetchall()
     ]
 
 
 @router.get("")
-def get_pantry(current_user: dict = Depends(get_current_user), db=Depends(get_db)) -> list:
-    return _get_items(db.cursor(), current_user["id"])
+async def get_pantry(current_user: dict = Depends(get_current_user), db=Depends(get_db)) -> list:
+    return await _get_items(db.cursor(), current_user["id"])
 
 
 @router.post("", status_code=201)
-def add_item(
+async def add_item(
     body: PantryItemBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    ingredient_id = _resolve_ingredient(cur, body.name)
+    ingredient_id = await _resolve_ingredient(cur, body.name)
     location = CATEGORY_TO_LOCATION.get(body.category, "pantry")
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO pantry_items
             (user_id, name, ingredient_id, quantity, unit, location, expiry_date, added_via)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -183,49 +182,48 @@ def add_item(
         body.quantity, body.unit, location,
         body.expiryDate, body.addedVia,
     ))
-    new_id = str(cur.fetchone()["id"])
-    cur.execute("""
+    new_id = str((await cur.fetchone())["id"])
+    await cur.execute("""
         SELECT p.*, p.freshness_status, ic.slug AS ic_slug
         FROM pantry_items_with_freshness p
         LEFT JOIN ingredients i ON i.id = p.ingredient_id
         LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
         WHERE p.id = %s
     """, (new_id,))
-    return _row_to_item(dict(cur.fetchone()))
+    return _row_to_item(dict(await cur.fetchone()))
 
 
 @router.patch("/{item_id}")
-def update_item(
+async def update_item(
     item_id: str,
     body: UpdatePantryItemBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM pantry_items WHERE id = %s AND user_id = %s AND is_active = true",
         (item_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Pantry item not found")
 
     updates = body.model_dump(exclude_none=True)
     if not updates:
-        # Nothing to change — just return current state
-        cur.execute("""
+        await cur.execute("""
             SELECT p.*, p.freshness_status, ic.slug AS ic_slug
             FROM pantry_items_with_freshness p
             LEFT JOIN ingredients i ON i.id = p.ingredient_id
             LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
             WHERE p.id = %s
         """, (item_id,))
-        return _row_to_item(dict(cur.fetchone()))
+        return _row_to_item(dict(await cur.fetchone()))
 
     set_clauses = []
     params = []
 
     if "name" in updates:
-        ingredient_id = _resolve_ingredient(cur, updates["name"])
+        ingredient_id = await _resolve_ingredient(cur, updates["name"])
         set_clauses += ["name = %s", "ingredient_id = %s"]
         params += [updates["name"], ingredient_id]
     if "quantity" in updates:
@@ -244,51 +242,51 @@ def update_item(
     set_clauses.append("updated_at = now()")
     params += [item_id, current_user["id"]]
 
-    cur.execute(
+    await cur.execute(
         f"UPDATE pantry_items SET {', '.join(set_clauses)} WHERE id = %s AND user_id = %s",
         params,
     )
-    cur.execute("""
+    await cur.execute("""
         SELECT p.*, p.freshness_status, ic.slug AS ic_slug
         FROM pantry_items_with_freshness p
         LEFT JOIN ingredients i ON i.id = p.ingredient_id
         LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
         WHERE p.id = %s
     """, (item_id,))
-    return _row_to_item(dict(cur.fetchone()))
+    return _row_to_item(dict(await cur.fetchone()))
 
 
 @router.delete("/{item_id}", status_code=200)
-def delete_item(
+async def delete_item(
     item_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "UPDATE pantry_items SET is_active = false WHERE id = %s AND user_id = %s AND is_active = true RETURNING id",
         (item_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Pantry item not found")
     return {"detail": "Deleted"}
 
 
 @router.post("/{item_id}/log-action", status_code=200)
-def log_action(
+async def log_action(
     item_id: str,
     body: LogActionBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM pantry_items WHERE id = %s AND user_id = %s AND is_active = true",
         (item_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Pantry item not found")
-    cur.execute(
+    await cur.execute(
         "SELECT log_pantry_action(%s, %s, %s)",
         (item_id, body.action, body.estimatedValue),
     )
@@ -315,7 +313,7 @@ async def ocr_receipt(
 
 
 @router.post("/bulk", status_code=201)
-def bulk_add(
+async def bulk_add(
     body: BulkAddBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
@@ -324,16 +322,16 @@ def bulk_add(
     uid = current_user["id"]
     rows = []
     for item in body.items:
-        ingredient_id = _resolve_ingredient(cur, item.name)
+        ingredient_id = await _resolve_ingredient(cur, item.name)
         location = CATEGORY_TO_LOCATION.get(item.category, "pantry")
         rows.append((
             uid, item.name, ingredient_id,
             item.quantity, item.unit, location,
             item.expiryDate, item.addedVia,
         ))
-    psycopg2.extras.execute_values(cur, """
+    await cur.executemany("""
         INSERT INTO pantry_items
             (user_id, name, ingredient_id, quantity, unit, location, expiry_date, added_via)
-        VALUES %s
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, rows)
-    return _get_items(cur, uid)
+    return await _get_items(cur, uid)

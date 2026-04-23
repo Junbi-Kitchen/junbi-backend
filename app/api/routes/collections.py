@@ -23,12 +23,12 @@ class UpdateCollectionBody(BaseModel):
     emoji: Optional[str] = None
 
 
-def _row_to_collection(cur, row: dict) -> dict:
-    cur.execute(
+async def _row_to_collection(cur, row: dict) -> dict:
+    await cur.execute(
         "SELECT recipe_id FROM collection_recipes WHERE collection_id = %s ORDER BY added_at",
         (row["id"],),
     )
-    recipe_ids = [str(r["recipe_id"]) for r in cur.fetchall()]
+    recipe_ids = [str(r["recipe_id"]) for r in await cur.fetchall()]
     return {
         "id": str(row["id"]),
         "name": row["name"],
@@ -41,46 +41,50 @@ def _row_to_collection(cur, row: dict) -> dict:
 
 
 @router.get("")
-def get_collections(
+async def get_collections(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> list:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT * FROM collections WHERE user_id = %s ORDER BY sort_order, created_at",
         (current_user["id"],),
     )
-    return [_row_to_collection(cur, dict(r)) for r in cur.fetchall()]
+    rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        result.append(await _row_to_collection(cur, dict(r)))
+    return result
 
 
 @router.post("", status_code=201)
-def create_collection(
+async def create_collection(
     body: CollectionBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO collections (user_id, name, description, cover_photo_url, emoji)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING *
     """, (current_user["id"], body.name, body.description, body.coverImageUri, body.emoji))
-    return _row_to_collection(cur, dict(cur.fetchone()))
+    return await _row_to_collection(cur, dict(await cur.fetchone()))
 
 
 @router.patch("/{collection_id}")
-def update_collection(
+async def update_collection(
     collection_id: str,
     body: UpdateCollectionBody,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM collections WHERE id = %s AND user_id = %s",
         (collection_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Collection not found")
 
     updates = body.model_dump(exclude_none=True)
@@ -93,46 +97,46 @@ def update_collection(
 
     if set_clauses:
         params += [collection_id, current_user["id"]]
-        cur.execute(
+        await cur.execute(
             f"UPDATE collections SET {', '.join(set_clauses)} WHERE id = %s AND user_id = %s",
             params,
         )
 
-    cur.execute("SELECT * FROM collections WHERE id = %s", (collection_id,))
-    return _row_to_collection(cur, dict(cur.fetchone()))
+    await cur.execute("SELECT * FROM collections WHERE id = %s", (collection_id,))
+    return await _row_to_collection(cur, dict(await cur.fetchone()))
 
 
 @router.delete("/{collection_id}", status_code=200)
-def delete_collection(
+async def delete_collection(
     collection_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "DELETE FROM collections WHERE id = %s AND user_id = %s RETURNING id",
         (collection_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Collection not found")
     return {"detail": "Deleted"}
 
 
 @router.post("/{collection_id}/recipes/{recipe_id}", status_code=200)
-def add_recipe_to_collection(
+async def add_recipe_to_collection(
     collection_id: str,
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM collections WHERE id = %s AND user_id = %s",
         (collection_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Collection not found")
-    cur.execute("""
+    await cur.execute("""
         INSERT INTO collection_recipes (collection_id, recipe_id)
         VALUES (%s::uuid, %s::uuid)
         ON CONFLICT (collection_id, recipe_id) DO NOTHING
@@ -141,20 +145,20 @@ def add_recipe_to_collection(
 
 
 @router.delete("/{collection_id}/recipes/{recipe_id}", status_code=200)
-def remove_recipe_from_collection(
+async def remove_recipe_from_collection(
     collection_id: str,
     recipe_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute(
+    await cur.execute(
         "SELECT id FROM collections WHERE id = %s AND user_id = %s",
         (collection_id, current_user["id"]),
     )
-    if not cur.fetchone():
+    if not await cur.fetchone():
         raise HTTPException(status_code=404, detail="Collection not found")
-    cur.execute(
+    await cur.execute(
         "DELETE FROM collection_recipes WHERE collection_id = %s AND recipe_id = %s::uuid",
         (collection_id, recipe_id),
     )

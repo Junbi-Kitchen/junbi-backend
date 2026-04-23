@@ -9,16 +9,15 @@ router = APIRouter(prefix="/savings", tags=["savings"])
 
 
 @router.get("")
-def get_savings(
+async def get_savings(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    cur.execute("SELECT * FROM user_savings WHERE user_id = %s", (current_user["id"],))
-    row = cur.fetchone()
-    # Compute weekly trends (last 8 weeks)
-    cur2 = db.cursor()
-    cur2.execute("""
+    await cur.execute("SELECT * FROM user_savings WHERE user_id = %s", (current_user["id"],))
+    row = await cur.fetchone()
+
+    await cur.execute("""
         SELECT
             TO_CHAR(DATE_TRUNC('week', logged_at), 'Mon DD') AS week,
             SUM(CASE WHEN action = 'used' THEN estimated_value ELSE 0 END) AS saved,
@@ -30,7 +29,7 @@ def get_savings(
     """, (current_user["id"],))
     weekly_trends = [
         {"week": r["week"], "saved": float(r["saved"] or 0), "wasted": float(r["wasted"] or 0)}
-        for r in cur2.fetchall()
+        for r in await cur.fetchall()
     ]
 
     if row is None:
@@ -51,7 +50,7 @@ def get_savings(
 
 
 @router.get("/log")
-def get_savings_log(
+async def get_savings_log(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
     limit: int = 20,
@@ -60,7 +59,7 @@ def get_savings_log(
     cur = db.cursor()
     uid = current_user["id"]
     if cursor:
-        cur.execute("""
+        await cur.execute("""
             SELECT id, item_name, action, estimated_value, logged_at
             FROM waste_log
             WHERE user_id = %s AND logged_at < %s::timestamptz
@@ -68,7 +67,7 @@ def get_savings_log(
             LIMIT %s
         """, (uid, cursor, limit + 1))
     else:
-        cur.execute("""
+        await cur.execute("""
             SELECT id, item_name, action, estimated_value, logged_at
             FROM waste_log
             WHERE user_id = %s
@@ -76,7 +75,7 @@ def get_savings_log(
             LIMIT %s
         """, (uid, limit + 1))
 
-    rows = cur.fetchall()
+    rows = await cur.fetchall()
     has_more = len(rows) > limit
     entries = rows[:limit]
     next_cursor = entries[-1]["logged_at"].isoformat() if has_more and entries else None
