@@ -149,9 +149,11 @@ async def search_ingredients(
         FROM ingredients i
         LEFT JOIN ingredient_categories ic ON ic.id = i.category_id
         WHERE i.name ILIKE %s
-        ORDER BY i.name
+        ORDER BY
+          CASE WHEN i.name ILIKE %s THEN 0 ELSE 1 END,
+          i.name
         LIMIT %s
-    """, (f"%{q}%", limit))
+    """, (f"%{q}%", f"{q}%", limit))
     return [
         {"name": r["name"], "category": USDA_SLUG_TO_CATEGORY.get(r["category"], "pantry")}
         for r in await cur.fetchall()
