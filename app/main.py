@@ -14,6 +14,7 @@ from app.api.routes import users, recipes, pantry, grocery, collections, stores,
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 if settings.FIREBASE_SERVICE_ACCOUNT_KEY:
     logger.info("Firebase: initializing with service account key")
     cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_KEY)

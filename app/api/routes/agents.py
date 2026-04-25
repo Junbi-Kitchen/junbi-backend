@@ -37,9 +37,12 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 # ---------------------------------------------------------------------------
 
 class StartSmartGroceryRequest(BaseModel):
-    store_preference: Literal["kroger", "instacart", "walmart", "whole_foods"] = "kroger"
+    # Instacart retailer slug — what store the user wants to shop at.
+    # Use 'instacart' to let Instacart auto-select the best available retailer.
+    store_preference: str = "instacart"
     delivery_preference: Literal["delivery", "pickup"] = "delivery"
     budget: float | None = None
+    zip_code: str | None = None  # used to resolve store_id via getStores()
 
 
 class ConfirmSmartGroceryRequest(BaseModel):
@@ -117,6 +120,7 @@ async def start_smart_grocery(
     initial_state: SmartGroceryState = {
         "user_id": uid,
         "store_preference": body.store_preference,
+        "store_id": None,        # resolved by load_context via Instacart getStores()
         "delivery_preference": body.delivery_preference,
         "budget": body.budget,
         # All other fields start empty — nodes populate them
@@ -130,6 +134,7 @@ async def start_smart_grocery(
         "savings_summary": {},
         "cart_items": [],
         "cart_total": 0.0,
+        "cart_id": None,
         "order_confirmed": None,
         "order_result": None,
         "grocery_list_id": None,

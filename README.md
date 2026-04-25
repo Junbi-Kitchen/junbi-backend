@@ -8,6 +8,10 @@ FastAPI backend for Gook — an AI-powered kitchen assistant that tracks your pa
 - **Supabase (PostgreSQL)** — database
 - **Firebase Admin SDK** — auth token verification
 - **dbmate** — database migrations
+- **LangGraph** — agent graph execution (Smart Grocery agent)
+- **Anthropic Claude** — pantry analysis, cart building, pantry image scanning
+- **psycopg2** — sync DB driver (all standard routes)
+- **psycopg v3 + psycopg-pool** — async DB driver (agent nodes only, for parallel queries)
 - **pgvector** — semantic ingredient search (future)
 
 ## Prerequisites
@@ -45,11 +49,14 @@ Copy `.env.example` to `.env` and fill in your values:
 cp .env.example .env
 ```
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | Supabase PostgreSQL connection string |
-| `FIREBASE_PROJECT_ID` | Firebase project ID |
-| `FIREBASE_SERVICE_ACCOUNT_KEY` | Path to service account JSON (see below) |
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | Supabase PostgreSQL connection string |
+| `FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Dev only | Path to service account JSON (see below) |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key — used by the Smart Grocery agent and pantry scan |
+| `INSTACART_SERVICE_URL` | No | URL of the Instacart TypeScript service (default: `http://localhost:3001`) |
+| `INSTACART_SERVICE_KEY` | No | Internal service-to-service key for the Instacart service |
 
 **Getting the Firebase service account key:**
 
@@ -118,32 +125,134 @@ curl http://localhost:8000/health
 ```
 gook-backend/
 ├── app/
+│   ├── agents/
+│   │   └── smart_grocery/         # Smart Grocery LangGraph agent
+│   │       ├── graph.py           # StateGraph definition and compilation
+│   │       ├── nodes.py           # All node functions (load_context, resolve_stores, etc.)
+│   │       ├── state.py           # SmartGroceryState TypedDict
+│   │       └── tools/
+│   │           ├── instacart.py   # HTTP bridge to the Instacart TypeScript service
+│   │           └── webview.py
 │   ├── api/
-│   │   └── routes/        # Route handlers
+│   │   └── routes/                # Route handlers
 │   │       ├── users.py
 │   │       ├── recipes.py
-│   │       ├── pantry.py
+│   │       ├── pantry.py          # includes POST /pantry/scan (vision)
 │   │       ├── grocery.py
 │   │       ├── collections.py
 │   │       ├── orders.py
-│   │       └── stores.py
+│   │       ├── stores.py
+│   │       └── agents.py          # Smart Grocery agent endpoints
 │   ├── core/              # Auth dependencies (Firebase token verification)
 │   ├── data/              # Legacy in-memory mock data (to be removed)
+│   ├── db.py              # Connection pools: sync (psycopg2) + async (psycopg v3)
 │   ├── schemas/           # Pydantic request/response schemas
 │   ├── services/          # Business logic
-│   └── main.py            # App entry point
+│   └── main.py            # App entry point + lifespan (async pool init)
 ├── db/
 │   ├── migrations/        # dbmate migration files
 │   └── schema.sql         # Auto-updated by dbmate — current DB state
 ├── scripts/
-│   └── seed/
-│       ├── sr_legacy_food_csv/   # USDA SR Legacy CSV files
-│       ├── seed_usda.py          # Seeds ingredient_categories + ingredients
-│       └── seed_mock.py          # Seeds demo user data for development
+│   ├── seed/
+│   │   ├── sr_legacy_food_csv/   # USDA SR Legacy CSV files
+│   │   ├── seed_usda.py          # Seeds ingredient_categories + ingredients
+│   │   └── seed_mock.py          # Seeds demo user data for development
+│   └── visualize_graph.py        # Renders the Smart Grocery graph as PNG + HTML
 ├── config.py              # Settings (loaded from .env)
 ├── draft_schema.sql       # Source of truth schema (mirrors db/migrations/)
 └── requirements.txt
 ```
+
+## Smart Grocery Agent
+
+The Smart Grocery agent is a [LangGraph](https://langchain-ai.github.io/langgraph/) `StateGraph` that automates grocery ordering end-to-end.
+
+### Graph flow
+
+```
+load_context → resolve_stores → analyze_pantry → search_store → compare_prices
+    → build_cart → [INTERRUPT: user reviews cart] → place_order → finalize
+```
+
+| Node | What it does |
+|---|---|
+| `load_context` | Fetches pantry, saved recipes, grocery list, preferences, and user zip code from DB **in parallel** (5 async queries via psycopg v3) |
+| `resolve_stores` | Calls Instacart for nearby stores, scores each one by price/quality fit against the user's preferences and budget, sets the recommended store |
+| `analyze_pantry` | Claude identifies what to buy: recipe gaps, expiring items, and missing staples |
+| `search_store` | Searches the recommended store's catalog via the Instacart TypeScript service |
+| `compare_prices` | Estimates cart total across all major retailers (Walmart, Costco, Kroger, Publix, Whole Foods, Aldi) |
+| `build_cart` | Claude picks the best product match per item with budget awareness |
+| `human_checkpoint` | **LangGraph interrupt** — graph pauses, frontend shows cart + store picker with insights |
+| `place_order` | Executes checkout via Instacart, returns a `checkout_url` opened in a WebView |
+| `finalize` | Writes confirmed cart items to the user's grocery list in DB |
+
+### Store recommendation logic
+
+`resolve_stores` scores each nearby store based on the user's profile:
+
+- **Tight budget** (`weeklyBudget ≤ $150`) → favors Walmart, Aldi, Costco
+- **Quality dietary tags** (organic, vegan, keto, etc.) → favors Whole Foods, Sprouts, Trader Joe's
+- **Large household** (4+) → bulk bonus for Costco
+- **No strong signal** → rewards balanced mid-tier stores (Kroger, Target, HEB)
+
+At `human_checkpoint`, the frontend receives the full ranked `nearby_stores` list with `insight` and `insight_type` fields so the user can override the recommendation before confirming.
+
+### Async DB architecture
+
+Agent nodes use **psycopg v3** (`AsyncConnectionPool`) instead of the psycopg2 sync pool used by all other routes. This allows `load_context` to run its 5 DB queries in parallel via `asyncio.gather()`, and avoids blocking the event loop in `finalize`.
+
+The psycopg2 pool remains in place for all standard API routes — nothing changed there.
+
+### Visualizing the graph
+
+```bash
+python scripts/visualize_graph.py
+# → scripts/smart_grocery_graph.png
+# → scripts/smart_grocery_graph.html  (opens automatically in browser)
+```
+
+### Running the Instacart TypeScript service
+
+The agent's `search_store` and `place_order` nodes proxy to a TypeScript microservice. When it's not running, all calls fall back to deterministic stub data so the agent still executes end-to-end.
+
+```bash
+cd services/instacart
+npm install && npm run dev   # runs on :3001 by default
+```
+
+---
+
+## Pantry Scan (Vision)
+
+`POST /pantry/scan` accepts a photo of a fridge or pantry shelf and uses Claude's vision model to detect ingredients.
+
+**Request:** multipart form upload, field name `image` (JPEG / PNG / WebP, max 5 MB)
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "name": "spinach",
+      "quantity": 1,
+      "unit": "bag",
+      "category": "produce",
+      "expiryDate": "2026-04-19",
+      "addedVia": "scan",
+      "freshnessNote": "Slightly wilted — use soon",
+      "confidence": "high"
+    }
+  ],
+  "model": "claude-sonnet-4-6",
+  "count": 4
+}
+```
+
+The endpoint **does not save to DB** — it returns detected items for the user to review. To save confirmed items call `POST /pantry/bulk` with `addedVia: "scan"`.
+
+If `ANTHROPIC_API_KEY` is not set, the endpoint returns stub data so the feature is testable in dev without credentials.
+
+---
 
 ## Database
 

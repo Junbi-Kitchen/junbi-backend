@@ -30,11 +30,27 @@ class CartItem(TypedDict):
     aisle: str | None
 
 
+class NearbyStore(TypedDict):
+    store_id: str
+    name: str
+    slug: str                  # matches price_comparison keys, e.g. 'walmart'
+    distance_miles: float | None
+    insight: str               # human-readable reason, e.g. "Lowest prices nearby"
+    insight_type: str          # 'price' | 'quality' | 'bulk' | 'balanced'
+    recommended: bool          # True for the top-scored store
+    supports_delivery: bool
+    supports_pickup: bool
+
+
 class SmartGroceryState(TypedDict):
     user_id: str
 
     # Request inputs
-    store_preference: str        # 'kroger' | 'instacart' | 'walmart'
+    # store_preference is the Instacart retailer slug, e.g. 'walmart', 'costco',
+    # 'publix' — resolved from getStores() using the user's zip code.
+    # Defaults to 'instacart' (let Instacart pick the best available retailer).
+    store_preference: str
+    store_id: str | None         # Instacart retailer ID from getStores()
     delivery_preference: str     # 'delivery' | 'pickup'
     budget: float | None
 
@@ -43,6 +59,10 @@ class SmartGroceryState(TypedDict):
     saved_recipes: list[dict]
     existing_grocery_items: list[dict]
     user_preferences: dict       # dietary_tags, allergies, household_size, weekly_budget
+    user_address: str | None     # zip code from user's default address
+
+    # Nearby stores ranked by user preference fit, populated by resolve_stores
+    nearby_stores: list[NearbyStore]
 
     # Claude analysis output
     missing_items: list[MissingItem]
@@ -58,9 +78,12 @@ class SmartGroceryState(TypedDict):
     cart_items: list[CartItem]
     cart_total: float
 
+    # Instacart cart ID (from createCart via TS service)
+    cart_id: str | None
+
     # Order lifecycle
     order_confirmed: bool | None   # None=pending review, True=go, False=cancelled
-    order_result: dict | None      # {order_id, status, checkout_url (for WebView stores)}
+    order_result: dict | None      # {status, checkout_url} — checkout_url opened in WebView
 
     # Written back to DB after order
     grocery_list_id: str | None
