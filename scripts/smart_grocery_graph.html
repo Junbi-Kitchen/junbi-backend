@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Grocery Graph</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background: #0f1117;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      font-family: sans-serif;
+    }
+    h1 { color: #e2e8f0; margin-bottom: 1.5rem; font-size: 1.2rem; letter-spacing: 0.05em; }
+    .mermaid {
+      background: #1e2130;
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <h1>Smart Grocery Agent — LangGraph</h1>
+  <div class="mermaid">
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	load_context(load_context)
+	resolve_stores(resolve_stores)
+	analyze_pantry(analyze_pantry)
+	search_store(search_store)
+	compare_prices(compare_prices)
+	build_cart(build_cart)
+	human_checkpoint(human_checkpoint<hr/><small><em>__interrupt = before</em></small>)
+	place_order(place_order)
+	finalize(finalize)
+	cancelled(cancelled)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> load_context;
+	analyze_pantry --> search_store;
+	build_cart --> human_checkpoint;
+	compare_prices --> build_cart;
+	human_checkpoint -.-> cancelled;
+	human_checkpoint -.-> place_order;
+	load_context --> resolve_stores;
+	place_order --> finalize;
+	resolve_stores --> analyze_pantry;
+	search_store --> compare_prices;
+	cancelled --> __end__;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+
+  </div>
+  <script>mermaid.initialize({ startOnLoad: true, theme: "dark" });</script>
+</body>
+</html>

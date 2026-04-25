@@ -16,7 +16,7 @@ Each builder takes a list of items and returns:
 import urllib.parse
 
 
-def build_instacart_url(items: list[dict], retailer_slug: str = "kroger") -> dict:
+def build_instacart_url(items: list[dict], retailer_slug: str = "walmart") -> dict:
     """
     Instacart storefront URL with search terms pre-filled.
 
@@ -79,7 +79,7 @@ def build_whole_foods_url(items: list[dict]) -> dict:
 def build_checkout_url(store: str, items: list[dict], delivery_preference: str = "delivery") -> dict:
     """
     Route to the correct URL builder for the given store.
-    For Kroger (native API), this is a fallback WebView if OAuth isn't set up yet.
+    Fallback for any store not handled by the Instacart TS service.
     """
     builders = {
         "instacart": build_instacart_url,
