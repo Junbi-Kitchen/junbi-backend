@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Gook Backend",
-    description="API for Gook — Grocery and Cooking",
+    title="Junbi Backend",
+    description="API for Junbi — AI-powered kitchen assistant",
     version="0.1.0",
     lifespan=lifespan,
 )

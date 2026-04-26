@@ -1,6 +1,6 @@
-# Gook Backend
+# Junbi Backend
 
-FastAPI backend for Gook — an AI-powered kitchen assistant that tracks your pantry, suggests recipes, and orders groceries.
+FastAPI backend for Junbi — an AI-powered kitchen assistant that tracks your pantry, suggests recipes, and orders groceries.
 
 ## Tech Stack
 
@@ -25,7 +25,7 @@ FastAPI backend for Gook — an AI-powered kitchen assistant that tracks your pa
 
 ```bash
 git clone <repo-url>
-cd gook-backend
+cd junbi-backend
 ```
 
 ### 2. Create and activate a virtual environment
@@ -98,7 +98,7 @@ The API will be available at `http://localhost:8000`.
 
 The backend binds to `0.0.0.0` so any device on the same WiFi can reach it.
 
-In development, the frontend auto-detects the backend IP from Expo's dev server — no manual configuration needed for physical devices. Just leave `EXPO_PUBLIC_API_URL` blank in `gook-frontend/.env`.
+In development, the frontend auto-detects the backend IP from Expo's dev server — no manual configuration needed for physical devices. Just leave `EXPO_PUBLIC_API_URL` blank in `junbi-frontend/.env`.
 
 Set `EXPO_PUBLIC_API_URL` explicitly only when:
 
@@ -123,7 +123,7 @@ curl http://localhost:8000/health
 ## Project Structure
 
 ```
-gook-backend/
+junbi-backend/
 ├── app/
 │   ├── agents/
 │   │   └── smart_grocery/         # Smart Grocery LangGraph agent

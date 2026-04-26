@@ -3,7 +3,7 @@
 Seed USDA SR Legacy food data into ingredient_categories and ingredients tables.
 
 Usage:
-    DATABASE_URL=postgresql://user:pass@localhost/gook python scripts/seed/seed_usda.py
+    DATABASE_URL=postgresql://user:pass@localhost/junbi python scripts/seed/seed_usda.py
 
 The script is idempotent: safe to run multiple times.
 """
@@ -144,7 +144,7 @@ def main() -> None:
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         print("Error: DATABASE_URL environment variable is not set.", file=sys.stderr)
-        print("Usage: DATABASE_URL=postgresql://user:pass@localhost/gook python scripts/seed/seed_usda.py", file=sys.stderr)
+        print("Usage: DATABASE_URL=postgresql://user:pass@localhost/junbi python scripts/seed/seed_usda.py", file=sys.stderr)
         sys.exit(1)
 
     print(f"Connecting to database...")

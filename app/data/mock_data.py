@@ -1,4 +1,4 @@
-"""Python translation of gook-frontend/lib/mockData.ts — seeded into every new user's data store."""
+"""Python translation of junbi-frontend/lib/mockData.ts — seeded into every new user's data store."""
 from datetime import datetime, timedelta, timezone
 import copy
 
@@ -378,7 +378,7 @@ MOCK_COLLECTIONS: list[dict] = [
 ]
 
 MOCK_STORES: list[dict] = [
-    {"id": "s1", "name": "Kroger", "logo": "kroger", "distance": 0.8, "supportsPickup": True, "isInstacart": True},
+    {"id": "s1", "name": "Publix", "logo": "publix", "distance": 0.8, "supportsPickup": True, "isInstacart": True},
     {"id": "s2", "name": "Walmart", "logo": "walmart", "distance": 1.2, "supportsPickup": True, "isInstacart": False},
     {"id": "s3", "name": "H-Mart", "logo": "hmart", "distance": 2.1, "supportsPickup": True, "isInstacart": True},
     {"id": "s4", "name": "Costco", "logo": "costco", "distance": 3.0, "supportsPickup": True, "isInstacart": True},

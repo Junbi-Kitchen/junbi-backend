@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Seed mock development data from gook-frontend/lib/mockData.ts.
+Seed mock development data from junbi-frontend/lib/mockData.ts.
 
 Inserts one demo user (Alex Rivera) with recipes, pantry, grocery list,
 collections, stores, an order, and waste log entries.
@@ -59,16 +59,16 @@ PLATFORM_MAP = {
 # ------------------------------------------------------------------ #
 
 # Stable IDs so re-runs are clean
-RECIPE_IDS = {f"r{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"gook-recipe-r{i}")) for i in range(1, 11)}
-COLLECTION_IDS = {f"col-{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"gook-collection-col-{i}")) for i in range(1, 5)}
-STORE_IDS = {f"s{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"gook-store-s{i}")) for i in range(1, 7)}
-PANTRY_IDS = {f"p{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"gook-pantry-p{i}")) for i in range(1, 21)}
-GROCERY_LIST_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "gook-grocery-list-1"))
-GROCERY_IDS = {f"g{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"gook-grocery-g{i}")) for i in range(1, 13)}
-ORDER_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "gook-order-o1"))
+RECIPE_IDS = {f"r{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"junbi-recipe-r{i}")) for i in range(1, 11)}
+COLLECTION_IDS = {f"col-{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"junbi-collection-col-{i}")) for i in range(1, 5)}
+STORE_IDS = {f"s{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"junbi-store-s{i}")) for i in range(1, 7)}
+PANTRY_IDS = {f"p{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"junbi-pantry-p{i}")) for i in range(1, 21)}
+GROCERY_LIST_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "junbi-grocery-list-1"))
+GROCERY_IDS = {f"g{i}": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"junbi-grocery-g{i}")) for i in range(1, 13)}
+ORDER_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "junbi-order-o1"))
 ADDRESS_IDS = {
-    "addr-1": str(uuid.uuid5(uuid.NAMESPACE_DNS, "gook-address-addr-1")),
-    "addr-2": str(uuid.uuid5(uuid.NAMESPACE_DNS, "gook-address-addr-2")),
+    "addr-1": str(uuid.uuid5(uuid.NAMESPACE_DNS, "junbi-address-addr-1")),
+    "addr-2": str(uuid.uuid5(uuid.NAMESPACE_DNS, "junbi-address-addr-2")),
 }
 
 now = datetime.now(timezone.utc)
@@ -322,7 +322,7 @@ MOCK_COLLECTIONS = [
 ]
 
 MOCK_STORES = [
-    {"id": "s1", "name": "Kroger",     "logo": "kroger",     "supports_pickup": True,  "is_instacart": True},
+    {"id": "s1", "name": "Publix",     "logo": "publix",     "supports_pickup": True,  "is_instacart": True},
     {"id": "s2", "name": "Walmart",    "logo": "walmart",    "supports_pickup": True,  "is_instacart": False},
     {"id": "s3", "name": "H-Mart",     "logo": "hmart",      "supports_pickup": True,  "is_instacart": True},
     {"id": "s4", "name": "Costco",     "logo": "costco",     "supports_pickup": True,  "is_instacart": True},
