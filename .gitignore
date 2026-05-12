@@ -47,5 +47,7 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Claude
+.claude/
 
 scripts/seed/sr_legacy_food_csv/

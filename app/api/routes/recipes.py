@@ -1,17 +1,23 @@
+import hashlib
+import json
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import anthropic
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
+from app.services.recipe_parser import parse_from_image, parse_from_youtube
+from config import settings
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
 SOURCE_TYPE_MAP = {
     "instagram": "instagram",
     "tiktok": "tiktok",
+    "youtube": "youtube",
     "url": "url",
     "manual": "manual",
 }
@@ -130,7 +136,7 @@ async def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
         body.title, body.description, body.imageUri, body.blurhash,
         body.cookTimeMinutes, difficulty,
         source_type,
-        body.source if source_type == "url" else None,
+        body.source if source_type in ("url", "youtube") else None,
         body.source if source_type in ("instagram", "tiktok") else None,
         nutrition.get("calories"), nutrition.get("proteinG"),
         nutrition.get("carbsG"), nutrition.get("fatG"),
@@ -294,14 +300,159 @@ async def import_recipe(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ) -> dict:
-    create_body = CreateRecipeRequest(
-        title="Imported Recipe",
-        imageUri="",
-        importedFrom=body.source,
-        source=body.url,
-    )
+    source = body.source.lower()
     cur = db.cursor()
+
+    # Dedup: reuse any existing recipe with the same source URL
+    await cur.execute("SELECT * FROM recipes WHERE source_url = %s", (body.url,))
+    existing = await cur.fetchone()
+    if existing:
+        row = dict(existing)
+        await cur.execute("""
+            INSERT INTO user_recipe_interactions (user_id, recipe_id, action)
+            VALUES (%s, %s, 'saved')
+            ON CONFLICT (user_id, recipe_id, action) DO NOTHING
+        """, (current_user["id"], row["id"]))
+        return await _build_recipe(cur, row)
+
+    try:
+        if source == "youtube" or "youtube.com" in body.url or "youtu.be" in body.url:
+            parsed = await parse_from_youtube(body.url)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported source '{source}'. Currently only YouTube URLs are supported for auto-import.",
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    create_body = CreateRecipeRequest(**parsed)
     return await _insert_recipe(cur, current_user["id"], create_body)
+
+
+@router.post("/parse-image")
+async def parse_recipe_image(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Parse a recipe from a photo (paper recipe, screenshot, etc.).
+    Returns a draft recipe — does NOT write to DB.
+    To save, call POST /recipes with the returned fields.
+    """
+    content_type = (image.content_type or "image/jpeg").lower()
+    image_bytes = await image.read()
+    try:
+        return await parse_from_image(image_bytes, content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+_SUPPORTED_LANGUAGES = {
+    "Korean": "ko", "Spanish": "es", "French": "fr",
+    "Japanese": "ja", "Chinese": "zh", "Italian": "it",
+    "Portuguese": "pt", "German": "de", "English": "en",
+}
+
+# In-process translation cache: sha256(title + language) -> result dict
+_translation_cache: dict[str, dict] = {}
+
+
+class TranslateRequest(BaseModel):
+    target_language: str
+    title: str
+    description: str = ""
+    ingredients: list[dict] = []
+    steps: list[dict] = []
+
+
+@router.post("/translate")
+async def translate_recipe(
+    body: TranslateRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    if body.target_language not in _SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{body.target_language}'. Supported: {', '.join(_SUPPORTED_LANGUAGES)}",
+        )
+    if body.target_language == "English":
+        raise HTTPException(status_code=400, detail="Content is already in English.")
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="AI translation not configured.")
+
+    # Cache key: hash of the full translatable content + target language
+    cache_key = hashlib.sha256(
+        json.dumps({
+            "language": body.target_language,
+            "title": body.title,
+            "description": body.description,
+            "ingredients": [ing.get("name", "") for ing in body.ingredients],
+            "steps": [s.get("instruction", "") for s in body.steps],
+        }, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+    if cache_key in _translation_cache:
+        return _translation_cache[cache_key]
+
+    ingredient_names = [ing.get("name", "") for ing in body.ingredients]
+    step_instructions = [s.get("instruction", "") for s in body.steps]
+
+    prompt = (
+        f"Translate the following recipe content from English to {body.target_language}.\n"
+        "Return ONLY valid JSON with this exact shape — no markdown, no explanation:\n"
+        "{\n"
+        '  "title": "translated title",\n'
+        '  "description": "translated description",\n'
+        '  "ingredients": ["translated name 1", "translated name 2", ...],\n'
+        '  "steps": ["translated step 1", "translated step 2", ...]\n'
+        "}\n\n"
+        f"title: {body.title}\n"
+        f"description: {body.description}\n"
+        f"ingredients: {json.dumps(ingredient_names, ensure_ascii=False)}\n"
+        f"steps: {json.dumps(step_instructions, ensure_ascii=False)}"
+    )
+
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            import re
+            raw = re.sub(r"^```(?:json)?\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+        translated = json.loads(raw)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Translation failed: {e}")
+
+    translated_ingredients = [
+        {**ing, "name": translated["ingredients"][i]}
+        for i, ing in enumerate(body.ingredients)
+        if i < len(translated.get("ingredients", []))
+    ]
+    translated_steps = [
+        {**step, "instruction": translated["steps"][i]}
+        for i, step in enumerate(body.steps)
+        if i < len(translated.get("steps", []))
+    ]
+
+    result = {
+        "language": body.target_language,
+        "title": translated.get("title", body.title),
+        "description": translated.get("description", body.description),
+        "ingredients": translated_ingredients,
+        "steps": translated_steps,
+    }
+    _translation_cache[cache_key] = result
+    return result
 
 
 @router.post("")
