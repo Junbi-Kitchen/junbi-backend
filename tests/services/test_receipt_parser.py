@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -51,7 +52,6 @@ SAMPLE_SCAN_RESPONSE = {
         },
     ],
     "unparsed_lines": [],
-    "raw_text": SAMPLE_RAW_TEXT,
 }
 
 
@@ -114,6 +114,22 @@ def test_call_gcv_empty_response_returns_empty_string():
     assert result == ""
 
 
+def test_call_gcv_http_error_raises():
+    import httpx
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "403", request=MagicMock(), response=MagicMock()
+    )
+
+    with patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.httpx.Client") as mock_client_cls:
+        mock_settings.GCV_API_KEY = "test-key"
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
+
+        with pytest.raises(httpx.HTTPStatusError):
+            _call_gcv(VALID_JPEG)
+
+
 # ── Haiku tests ──────────────────────────────────────────────────────────────
 
 def test_call_haiku_no_api_key_raises_runtime_error():
@@ -123,8 +139,20 @@ def test_call_haiku_no_api_key_raises_runtime_error():
             _call_haiku(SAMPLE_RAW_TEXT)
 
 
+def test_call_haiku_json_parse_error_raises_runtime_error():
+    mock_message = MagicMock()
+    mock_message.content = [MagicMock(text="not valid json {{{{")]
+
+    with patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+        mock_settings.ANTHROPIC_API_KEY = "test-key"
+        mock_anthropic.return_value.messages.create.return_value = mock_message
+
+        with pytest.raises(RuntimeError, match="Receipt parsing failed"):
+            _call_haiku(SAMPLE_RAW_TEXT)
+
+
 def test_call_haiku_returns_parsed_dict():
-    import json
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=json.dumps(SAMPLE_SCAN_RESPONSE))]
 
@@ -141,7 +169,6 @@ def test_call_haiku_returns_parsed_dict():
 
 
 def test_call_haiku_strips_markdown_fences():
-    import json
     fenced = f"```json\n{json.dumps(SAMPLE_SCAN_RESPONSE)}\n```"
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=fenced)]
@@ -154,6 +181,8 @@ def test_call_haiku_strips_markdown_fences():
         result = _call_haiku(SAMPLE_RAW_TEXT)
 
     assert result["store"]["name"] == "WINCO FOODS"
+    assert len(result["items"]) == 2
+    assert result["summary"]["total"] == 10.24
 
 
 # ── Full flow test ────────────────────────────────────────────────────────────
@@ -173,4 +202,19 @@ async def test_parse_receipt_image_full_flow():
 async def test_parse_receipt_image_empty_ocr_raises_runtime_error():
     with patch("app.services.receipt_parser._call_gcv", return_value="   "):
         with pytest.raises(RuntimeError, match="No text found"):
+            await parse_receipt_image(VALID_JPEG, "image/jpeg")
+
+
+@pytest.mark.asyncio
+async def test_parse_receipt_image_haiku_json_error_raises_runtime_error():
+    mock_message = MagicMock()
+    mock_message.content = [MagicMock(text="not valid json {{{{")]
+
+    with patch("app.services.receipt_parser._call_gcv", return_value=SAMPLE_RAW_TEXT), \
+         patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+        mock_settings.ANTHROPIC_API_KEY = "test-key"
+        mock_anthropic.return_value.messages.create.return_value = mock_message
+
+        with pytest.raises(RuntimeError, match="Receipt parsing failed"):
             await parse_receipt_image(VALID_JPEG, "image/jpeg")
