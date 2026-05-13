@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ANTHROPIC_API_KEY: str | None = None
     YOUTUBE_API_KEY: str | None = None
+    GCV_API_KEY: str | None = None
     INSTACART_API_KEY: str | None = None
     INSTACART_SERVICE_URL: str = "http://localhost:3001"
     INSTACART_SERVICE_KEY: str | None = None
