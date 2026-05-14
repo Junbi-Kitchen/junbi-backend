@@ -1,8 +1,6 @@
 import base64
 import json
 import logging
-import random
-import uuid
 from datetime import date, timedelta
 from typing import Literal, Optional
 
@@ -11,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
+from app.services.receipt_parser import parse_receipt_image
 from app.db import get_db
 from config import settings
 
@@ -312,18 +311,14 @@ async def ocr_receipt(
     image: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    # Stub: return 3-5 random items from mock data
-    from app.data.mock_data import MOCK_PANTRY
-    import copy
-    count = random.randint(3, 5)
-    sample = random.sample(MOCK_PANTRY, min(count, len(MOCK_PANTRY)))
-    result = []
-    for item in sample:
-        new = copy.deepcopy(item)
-        new["id"] = str(uuid.uuid4())
-        new["addedVia"] = "receipt"
-        result.append(new)
-    return {"items": result}
+    content_type = (image.content_type or "image/jpeg").lower()
+    image_bytes = await image.read()
+    try:
+        return await parse_receipt_image(image_bytes, content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.post("/scan")

@@ -49,5 +49,10 @@ htmlcov/
 
 # Claude
 .claude/
+memory/
+
+# Test artifacts
+test.db
+tests/images/
 
 scripts/seed/sr_legacy_food_csv/
