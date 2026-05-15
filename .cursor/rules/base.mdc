@@ -1,0 +1,42 @@
+---
+description: Core conventions for all Junbi code — applies everywhere
+alwaysApply: true
+---
+
+# Junbi — Base Conventions
+
+**App:** Junbi — AI kitchen assistant. This repo is `gook-backend` (FastAPI + Python API).
+
+## Naming
+
+- Python classes: PascalCase (`UpdatePantryItemBody`, `UserPreferences`)
+- Python functions/variables: snake_case
+- DB columns: snake_case — API JSON keys: camelCase (map in route handler)
+- Files: snake_case (`pantry.py`, `user_service.py`)
+
+## Python Version
+
+Python 3.13. Use `venv`. Never `pip install` without activating the venv first.
+
+## Package Manager
+
+`pip` inside `venv`. Add to `requirements.txt` (prod) or `requirements-dev.txt` (dev/test).
+
+## Commit Format
+
+```
+feat: add receipt OCR endpoint
+fix: async pool leak on agent timeout
+chore: update requirements
+```
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
+
+## Error Handling
+
+- `HTTPException(status_code=..., detail="...")` for expected errors
+- Let unexpected exceptions propagate — FastAPI returns 500 automatically
+- Never swallow exceptions silently
+
+## No Comments on What the Code Does
+
+Only add comments for non-obvious WHY (workarounds, constraints, subtle invariants).

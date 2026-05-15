@@ -1,0 +1,56 @@
+---
+description: Database conventions for Junbi — Supabase PostgreSQL + dbmate migrations
+alwaysApply: false
+globs: ["db/**", "**/*.sql", "draft_schema.sql"]
+---
+
+# Junbi Database Rules
+
+## Database
+
+Supabase-hosted PostgreSQL. Driver: psycopg v3 (async). No ORM.
+
+## Migration Workflow
+
+```bash
+dbmate new <descriptive_name>       # creates db/migrations/<timestamp>_<name>.sql
+# edit the generated file, then:
+make migrate                        # applies, regenerates db/schema.sql
+```
+
+- `db/migrations/` — edit these files.
+- `db/schema.sql` — **auto-generated, never edit**.
+- `draft_schema.sql` — source-of-truth for reviewing schema state.
+
+## SQL Style
+
+- Column names: `snake_case`; table names: `snake_case`, plural
+- Primary keys: `id UUID DEFAULT gen_random_uuid()`
+- Foreign keys: `<table_singular>_id`
+- Timestamps: `created_at TIMESTAMPTZ DEFAULT NOW()`, `updated_at TIMESTAMPTZ DEFAULT NOW()`
+- Use `NOT NULL` explicitly where a column must have a value
+
+## Parameterized Queries
+
+```python
+# Always this:
+await cur.execute("INSERT INTO pantry_items (user_id, name) VALUES (%s, %s)", (user_id, name))
+
+# Never this (SQL injection risk):
+await cur.execute(f"INSERT INTO pantry_items (user_id, name) VALUES ('{user_id}', '{name}')")
+```
+
+## Key Tables
+
+| Table | Purpose |
+|---|---|
+| `user_profiles` | Identity (id, email, display_name, avatar_url) |
+| `user_preferences` | Dietary tags, allergies, cuisines, household_size |
+| `user_addresses` | Delivery addresses |
+| `pantry_items` | Current ingredients per user |
+| `ingredients` | Reference ingredient names |
+| `recipes` | User's saved recipes |
+| `grocery_lists` | Shopping lists (status: active / archived) |
+| `grocery_list_items` | Items per grocery list |
+| `orders` | Order history |
+| `connected_accounts` | YouTube / Instagram handles per user |

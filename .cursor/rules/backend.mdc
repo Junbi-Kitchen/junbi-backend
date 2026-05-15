@@ -1,0 +1,65 @@
+---
+description: Backend rules for this FastAPI + Python codebase
+alwaysApply: false
+globs: ["app/**", "scripts/**", "config.py", "main.py"]
+---
+
+# Junbi Backend Rules
+
+## Stack
+
+FastAPI + Python 3.13, Supabase PostgreSQL, psycopg v3 (async), Firebase Admin SDK, LangGraph, Anthropic Claude API. No ORM.
+
+## Database Queries
+
+- Raw parameterized SQL only. Always `%s` placeholders — never f-strings in SQL.
+- `dict_row` row factory — results are dicts.
+- All DB calls are `async`: `await cur.execute(...)`.
+
+```python
+async with conn.cursor(row_factory=dict_row) as cur:
+    await cur.execute("SELECT * FROM pantry_items WHERE user_id = %s", (user_id,))
+```
+
+## Auth
+
+- All endpoints except `GET /health` need `Depends(get_current_user)`.
+- Never verify Firebase tokens manually — always use the dependency.
+
+## Dependency Injection
+
+```python
+@router.post("/pantry")
+async def add_item(
+    body: AddPantryItemBody,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+```
+
+## camelCase ↔ snake_case
+
+- DB columns: snake_case. API responses: camelCase. Map in the route handler.
+
+## Migrations
+
+- New migrations: `dbmate new <name>` → edit the file → `make migrate`.
+- Never edit `db/schema.sql` — it is auto-generated.
+
+## Error Handling
+
+- `HTTPException(status_code=..., detail="...")` for expected errors.
+- Let unexpected exceptions propagate.
+
+## Async
+
+- All route handlers: `async def`. No blocking calls inside async functions.
+
+## PROHIBITIONS
+
+- No ORM
+- No f-strings or string concatenation in SQL
+- No manual Firebase token verification in routes
+- No manual DB connection creation in routes (use `Depends(get_db)`)
+- Never edit `db/schema.sql`
+- No hardcoded secrets — read from `config.py`

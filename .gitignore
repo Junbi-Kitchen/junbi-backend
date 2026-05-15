@@ -16,6 +16,10 @@ ENV/
 .env.*
 !.env.example
 
+# Claude Code — personal local files
+CLAUDE.local.md
+.cursor/rules/personal.mdc
+
 # Firebase service account key
 serviceAccountKey.json
 *serviceAccount*.json
