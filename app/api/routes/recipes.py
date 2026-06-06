@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
-from app.services.recipe_parser import parse_from_image, parse_from_youtube
+from app.services.recipe_parser import parse_from_image, parse_from_instagram, parse_from_tiktok, parse_from_youtube
 from config import settings
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
@@ -316,12 +316,17 @@ async def import_recipe(
         return await _build_recipe(cur, row)
 
     try:
-        if source == "youtube" or "youtube.com" in body.url or "youtu.be" in body.url:
+        url_lower = body.url.lower()
+        if "youtube.com" in url_lower or "youtu.be" in url_lower:
             parsed = await parse_from_youtube(body.url)
+        elif "tiktok.com" in url_lower:
+            parsed = await parse_from_tiktok(body.url)
+        elif "instagram.com" in url_lower:
+            parsed = await parse_from_instagram(body.url)
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported source '{source}'. Currently only YouTube URLs are supported for auto-import.",
+                detail="Unsupported URL. Paste a YouTube, TikTok, or Instagram link.",
             )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

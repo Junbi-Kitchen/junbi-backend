@@ -183,6 +183,14 @@ def _extract_video_id(url: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# oEmbed helpers (TikTok + Instagram)
+# ---------------------------------------------------------------------------
+
+_TIKTOK_OEMBED = "https://www.tiktok.com/oembed"
+_INSTAGRAM_OEMBED = "https://graph.facebook.com/v18.0/instagram_oembed"
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -234,6 +242,84 @@ async def parse_from_youtube(url: str) -> dict:
         raise RuntimeError("Recipe extraction failed. The video description may not contain a recipe.")
 
     return _build_result(parsed, source_url=url, imported_from="youtube", image_uri=thumbnail_url)
+
+
+async def parse_from_tiktok(url: str) -> dict:
+    """
+    Fetch TikTok video metadata via the public oEmbed API (no auth required),
+    then extract a structured recipe using Claude Haiku.
+
+    TikTok's oEmbed `title` field contains the full caption, which food creators
+    typically use to post their recipe steps and ingredients.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.get(_TIKTOK_OEMBED, params={"url": url})
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            raise RuntimeError(f"Could not fetch TikTok metadata: {e}")
+
+    title = data.get("title", "")
+    author = data.get("author_name", "")
+    thumbnail_url = data.get("thumbnail_url", "")
+
+    text_blob = f"TikTok creator: {author}\n\nVideo caption:\n{title}"
+
+    try:
+        parsed = _call_claude_haiku(text_blob)
+    except Exception as e:
+        logger.error("Claude Haiku recipe extraction failed for TikTok %s: %s", url, e)
+        raise RuntimeError("Recipe extraction failed. The video caption may not contain a recipe.")
+
+    return _build_result(parsed, source_url=url, imported_from="tiktok", image_uri=thumbnail_url)
+
+
+async def parse_from_instagram(url: str) -> dict:
+    """
+    Fetch Instagram post/reel metadata via the Meta oEmbed API.
+    Requires INSTAGRAM_ACCESS_TOKEN (app_id|app_secret) in config.
+
+    The oEmbed `title` field contains the post caption, which food creators
+    commonly use to share full recipes.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
+
+    if not settings.INSTAGRAM_ACCESS_TOKEN:
+        raise RuntimeError(
+            "INSTAGRAM_ACCESS_TOKEN is not configured. "
+            "Create a Meta app at developers.facebook.com, enable 'oEmbed Read', "
+            "then set INSTAGRAM_ACCESS_TOKEN=app_id|app_secret in .env"
+        )
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.get(
+                _INSTAGRAM_OEMBED,
+                params={"url": url, "access_token": settings.INSTAGRAM_ACCESS_TOKEN},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            raise RuntimeError(f"Could not fetch Instagram metadata: {e}")
+
+    caption = data.get("title", "")
+    author = data.get("author_name", "")
+    thumbnail_url = data.get("thumbnail_url", "")
+
+    text_blob = f"Instagram creator: @{author}\n\nPost caption:\n{caption}"
+
+    try:
+        parsed = _call_claude_haiku(text_blob)
+    except Exception as e:
+        logger.error("Claude Haiku recipe extraction failed for Instagram %s: %s", url, e)
+        raise RuntimeError("Recipe extraction failed. The post caption may not contain a recipe.")
+
+    return _build_result(parsed, source_url=url, imported_from="instagram", image_uri=thumbnail_url)
 
 
 async def parse_from_image(image_bytes: bytes, content_type: str) -> dict:
