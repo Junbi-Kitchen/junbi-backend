@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
-from app.agents.ingredient_resolver.agent import run_ingredient_resolver
+from app.services.ingredient_resolver import run_ingredient_resolver
 from app.services.recipe_parser import parse_from_image, parse_from_instagram, parse_from_tiktok, parse_from_youtube
 from config import settings
 
