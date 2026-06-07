@@ -136,7 +136,7 @@ This installs the `pre-push` git hook from `git-hooks/`. **Every teammate must r
 
 Every push requires a worklog entry. The pre-push hook enforces this — it will block your push and show instructions if you forget.
 
-**How to write one (recommended):** Run `/junbi-worklog` in Claude Code. It reads your git diff and writes the file for you.
+**How to write one (recommended):** Run `/junbi-worklog` in Claude Code. It reads your git diff and writes the file for you. All entries live in `worklogs/` — one file per push, named by date, time, and author.
 
 **How to write one manually:**
 
