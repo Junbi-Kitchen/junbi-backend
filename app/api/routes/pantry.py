@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.core.dependencies import get_current_user
 from app.services.receipt_parser import parse_receipt_image
 from app.db import get_db
+from app.agents.ingredient_resolver.agent import run_ingredient_resolver
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -106,16 +107,6 @@ class LogActionBody(BaseModel):
     estimatedValue: float = 0.0
 
 
-async def _resolve_ingredient(cur, name: str) -> str:
-    """Upsert ingredient by name and return its UUID."""
-    await cur.execute(
-        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
-        (name,),
-    )
-    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str((await cur.fetchone())["id"])
-
-
 def _row_to_item(row: dict) -> dict:
     """Convert a pantry_items_with_freshness DB row to the frontend shape."""
     raw = row.get("ic_slug") or LOCATION_TO_CATEGORY.get(str(row.get("location", "pantry")), "pantry")
@@ -183,7 +174,7 @@ async def add_item(
     db=Depends(get_db),
 ) -> dict:
     cur = db.cursor()
-    ingredient_id = await _resolve_ingredient(cur, body.name)
+    ingredient_id = await run_ingredient_resolver(body.name)
     location = CATEGORY_TO_LOCATION.get(body.category, "pantry")
     await cur.execute("""
         INSERT INTO pantry_items
@@ -236,7 +227,7 @@ async def update_item(
     params = []
 
     if "name" in updates:
-        ingredient_id = await _resolve_ingredient(cur, updates["name"])
+        ingredient_id = await run_ingredient_resolver(updates["name"])
         set_clauses += ["name = %s", "ingredient_id = %s"]
         params += [updates["name"], ingredient_id]
     if "quantity" in updates:
@@ -445,7 +436,7 @@ async def bulk_add(
     uid = current_user["id"]
     rows = []
     for item in body.items:
-        ingredient_id = await _resolve_ingredient(cur, item.name)
+        ingredient_id = await run_ingredient_resolver(item.name)
         location = CATEGORY_TO_LOCATION.get(item.category, "pantry")
         rows.append((
             uid, item.name, ingredient_id,
