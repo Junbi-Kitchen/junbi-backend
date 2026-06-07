@@ -138,6 +138,18 @@ Every push requires a worklog entry. The pre-push hook enforces this — it will
 
 **How to write one (recommended):** Run `/junbi-worklog` in Claude Code. It reads your git diff and writes the file for you. All entries live in `worklogs/` — one file per push, named by date, time, and author.
 
+### Updating CLAUDE.md (optional, intentional)
+
+`CLAUDE.md` is the architectural reference — it documents conventions, library constraints, and gotchas that every developer and Claude session needs to know. It is **not** updated automatically on every push.
+
+Run `/junbi-update-claude` in Claude Code when you've made a decision worth documenting:
+- Added a library with non-obvious usage constraints
+- Discovered an API quirk and wrote a workaround
+- Established a new pattern or convention
+- Changed something that would trip up a teammate or future Claude session
+
+Don't run it just because you shipped a feature — that's what `worklogs/` is for.
+
 **How to write one manually:**
 
 1. Create a new file in `worklogs/` named:
