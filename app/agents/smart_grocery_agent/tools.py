@@ -30,7 +30,7 @@ Tool overview
       Writes missing_items list to state; returns that list as JSON.
 
   search_kroger_products(delivery_preference)
-      Calls run_kroger_agent() from kroger_agent/ with the missing item names.
+      Calls search_kroger() from kroger_agent/ with the missing item names.
       The Kroger agent uses kroger-mcp to search the live Kroger API.
       Writes kroger_result to state; returns a short found/unfound summary.
 
@@ -57,7 +57,7 @@ from google.adk.tools import ToolContext
 
 from app.db import get_async_pool
 from config import settings
-from app.agents.kroger_agent import run_kroger_agent
+from app.agents.kroger_client import search_kroger
 
 logger = logging.getLogger(__name__)
 
@@ -431,18 +431,18 @@ async def search_kroger_products(
     """
     Search the Kroger API for every item in the missing_items list.
 
-    Delegates to run_kroger_agent() in kroger_agent/, which:
+    Delegates to search_kroger() in kroger_agent/, which:
       1. Starts the kroger-mcp subprocess
       2. Calls search_locations to find the nearest Kroger store by zip code
       3. Calls search_products for each item (up to 5 results per item)
       4. Picks the best match per item and returns a cart_preview
 
     Reads from state: missing_items, user_address
-    Writes to state:  kroger_result (full KrogerAgentResult), delivery_preference,
+    Writes to state:  kroger_result (full KrogerResult), delivery_preference,
                       nearby_stores[0].store_id (backfilled from actual location)
     Returns: compact JSON with store info, found/unfound counts, estimated total.
 
-    Falls back gracefully: if credentials are missing, run_kroger_agent() returns
+    Falls back gracefully: if credentials are missing, search_kroger() returns
     stub data — the cart can still be built and reviewed without live API calls.
     """
     missing_items = tool_context.state.get("missing_items", [])
@@ -459,7 +459,7 @@ async def search_kroger_products(
     item_names = [i["name"] for i in missing_items]
     quantities = {i["name"]: i.get("quantity", 1) for i in missing_items}
 
-    kroger_result = await run_kroger_agent(
+    kroger_result = await search_kroger(
         items=item_names,
         zip_code=zip_code,
         quantities=quantities,
@@ -523,7 +523,7 @@ async def build_grocery_cart(
 
     # Use Kroger's cart_preview if available; otherwise call Claude to build cart
     if cart_preview and settings.ANTHROPIC_API_KEY:
-        cart_items, cart_total = _claude_refine_cart(
+        cart_items, cart_total = await _claude_refine_cart(
             missing_items, search_results, cart_preview, store, budget,
             delivery_preference, prefs
         )
@@ -534,11 +534,17 @@ async def build_grocery_cart(
     tool_context.state["cart_items"] = cart_items
     tool_context.state["cart_total"] = cart_total
 
+    within_budget = (cart_total <= budget) if budget else None
+
     return json.dumps({
         "cart_items": cart_items,
         "cart_total": cart_total,
         "item_count": len(cart_items),
+        "budget": budget,
+        "within_budget": within_budget,
+        "over_by": round(cart_total - budget, 2) if budget and cart_total > budget else 0,
         "savings_summary": savings_summary,
+        "store": kroger_result.get("store", {}),
     })
 
 
@@ -618,47 +624,145 @@ def _cart_from_kroger_preview(cart_preview: list, store: str) -> list:
     ]
 
 
-def _claude_refine_cart(
+async def _claude_refine_cart(
     missing_items, search_results, cart_preview, store, budget, delivery_preference, prefs
 ) -> tuple[list, float]:
     """
-    Ask Claude to re-rank product options and assign aisle labels to cart items.
+    Ask Claude to make budget-aware product selections from real Kroger prices.
 
-    The Kroger agent picks a "best" product mechanically (lowest price). Claude
-    considers dietary tags, budget sensitivity, and brand relevance to make a
-    more contextual selection. It also fills in aisle labels that help the
-    frontend group items for in-store navigation.
+    The Kroger API returns real shelf prices. Claude uses those to:
+      - Check if the cart total fits the user's weekly budget
+      - Prefer Kroger-brand items when money is tight
+      - Flag expensive items and suggest cheaper options when over budget
+      - Apply dietary tags (e.g. organic preference, gluten-free)
+      - Assign aisle labels for in-store navigation
 
     Falls back to _cart_from_kroger_preview() if the Claude call fails.
     """
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    kroger_total = sum((i.get("estimated_price") or 0) for i in cart_preview)
+    over_budget = budget and kroger_total > budget
+    budget_gap = round(kroger_total - budget, 2) if over_budget else 0
+
+    dietary_tags = {t.lower() for t in (prefs.get("dietaryTags") or [])}
+    allergies = {a.lower() for a in (prefs.get("allergies") or [])}
+
+    def _option_summary(p: dict) -> dict:
+        """Compact product summary with all personalization-relevant fields."""
+        out: dict = {
+            "product_id": p.get("product_id"),
+            "name": p.get("name"),
+            "brand": p.get("brand"),
+            "price": p.get("price"),
+            "sale_price": p.get("sale_price"),
+            "unit": p.get("unit"),
+            "organic": p.get("organic", False),
+            "stock_level": p.get("stock_level"),
+            "temperature": p.get("temperature"),
+        }
+        # Only include allergens/declarations if present (keeps prompt leaner)
+        if p.get("allergens"):
+            out["allergens"] = p["allergens"]
+        if p.get("manufacturer_declarations"):
+            out["claims"] = p["manufacturer_declarations"]
+        if p.get("rating") is not None:
+            out["rating"] = f"{p['rating']:.1f} ({p.get('review_count', 0)} reviews)"
+        if p.get("nutrition"):
+            n = p["nutrition"]
+            out["nutrition_per_serving"] = {
+                k: v for k, v in {
+                    "serving": n.get("serving_size"),
+                    "calories": n.get("calories"),
+                    "protein_g": n.get("protein_g"),
+                    "fat_g": n.get("fat_g"),
+                    "carbs_g": n.get("carbs_g"),
+                    "fiber_g": n.get("fiber_g"),
+                    "sodium_mg": n.get("sodium_mg"),
+                }.items() if v is not None
+            }
+        return out
+
     items_with_options = [
-        {"item": item, "store_options": search_results.get(item["name"], [])[:3]}
+        {
+            "item": item["name"],
+            "quantity": item.get("quantity", 1),
+            "unit": item.get("unit", ""),
+            "reason": item.get("reason", ""),
+            "options": [
+                _option_summary(p)
+                for p in search_results.get(item["name"], [])[:3]
+            ],
+            "kroger_pick": next(
+                (c for c in cart_preview if c.get("name") == item["name"]), None
+            ),
+        }
         for item in missing_items
     ]
-    prompt = f"""You are building a grocery cart for {store}.
 
-Budget: ${budget or "flexible"}
+    budget_context = (
+        f"Budget: ${budget}/week. Cart total so far: ${kroger_total:.2f}. "
+        f"OVER BUDGET by ${budget_gap} — prioritize cheaper options where possible."
+        if over_budget
+        else f"Budget: ${budget}/week. Cart total: ${kroger_total:.2f} — within budget."
+        if budget
+        else "No budget set — optimize for best value."
+    )
+
+    # Build dietary guidance so Claude knows what to flag
+    dietary_notes = []
+    if "organic" in dietary_tags:
+        dietary_notes.append("Prefer organic products (organic: true) when available.")
+    if "gluten-free" in dietary_tags or "gluten free" in dietary_tags:
+        dietary_notes.append("Only pick products that are gluten-free (check allergens/claims).")
+    if "dairy-free" in dietary_tags or "dairy free" in dietary_tags or "vegan" in dietary_tags:
+        dietary_notes.append("Avoid products containing dairy. Check allergens carefully.")
+    if "keto" in dietary_tags:
+        dietary_notes.append("Prefer high-protein, low-carb options (check nutrition_per_serving).")
+    if allergies:
+        dietary_notes.append(f"User is allergic to: {', '.join(allergies)}. NEVER pick products that 'Contains' these.")
+    dietary_guidance = "\n".join(dietary_notes) if dietary_notes else "No special dietary restrictions."
+
+    prompt = f"""You are finalizing a grocery cart at {store} using REAL prices and product data from the Kroger API.
+
+{budget_context}
 Delivery preference: {delivery_preference}
-Dietary tags: {prefs.get("dietaryTags", [])}
 
-Items to buy with store product options:
+DIETARY GUIDANCE (apply strictly):
+{dietary_guidance}
+
+For each item you have up to 3 real product options with:
+  - Price (use sale_price if lower than price)
+  - Organic flag, allergens, manufacturer claims (Dairy Free, Gluten Free, etc.)
+  - Nutrition info per serving (calories, protein, fat, carbs, sodium)
+  - Stock level — skip TEMPORARILY_OUT_OF_STOCK items if alternatives exist
+  - Customer rating
+
+Pick the best product per item balancing: budget fit → dietary safety → value → quality.
+
+Items:
 {json.dumps(items_with_options, indent=2)}
 
-Kroger's suggested cart (use as a starting point):
-{json.dumps(cart_preview, indent=2)}
-
-For each item, pick the best product (best value, most relevant match).
 Return a JSON array of cart items, each with:
-  - name, quantity, unit, product_id, estimated_price, store, aisle
+  - name (original item name)
+  - quantity (number)
+  - unit (string)
+  - product_id (from the chosen option)
+  - product_name (full product name)
+  - price (unit price float or null — use sale_price if on sale)
+  - estimated_price (price × quantity)
+  - store (use "{store}")
+  - aisle (e.g. "Dairy", "Produce", "Meat" — use temperature/category to infer)
+  - note (optional: why you chose this, e.g. "Organic, on sale $1.20 off" or "Cheapest option")
 
-Include a final object with "__summary__": {{"cart_total": number, "item_count": number}}
+End with one object: {{"__total__": {{"cart_total": <sum of estimated_prices>, "item_count": <n>}}}}
 
-Respond with ONLY a valid JSON array."""
+Respond with ONLY a valid JSON array, no prose."""
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
+        response = await asyncio.to_thread(
+            client.messages.create,
+            model="claude-haiku-4-5-20251001",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -668,15 +772,15 @@ Respond with ONLY a valid JSON array."""
             if raw.startswith("json"):
                 raw = raw[4:]
         parsed = json.loads(raw)
-        summary = next((i for i in parsed if isinstance(i, dict) and "__summary__" in i), {})
-        cart_items = [i for i in parsed if "__summary__" not in i]
-        cart_total = (summary.get("__summary__") or {}).get("cart_total") or sum(
+        summary = next((i for i in parsed if isinstance(i, dict) and "__total__" in i), {})
+        cart_items = [i for i in parsed if "__total__" not in i]
+        cart_total = (summary.get("__total__") or {}).get("cart_total") or sum(
             (i.get("estimated_price") or 0) for i in cart_items
         )
         return cart_items, round(float(cart_total), 2)
     except Exception as e:
         logger.error("_claude_refine_cart failed: %s", e)
-        return _cart_from_kroger_preview(cart_preview, store), 0.0
+        return _cart_from_kroger_preview(cart_preview, store), kroger_total
 
 
 def _stub_analysis(pantry_items: list, saved_recipes: list) -> list:

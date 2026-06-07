@@ -54,6 +54,7 @@ This split means:
 """
 
 from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
 
 from .tools import (
     load_user_context,
@@ -72,46 +73,49 @@ from .tools import (
 # out so the FastAPI layer can parse the response without fragile string matching.
 ORCHESTRATOR_INSTRUCTION = """You are the Smart Grocery planning agent for Junbi, an AI kitchen assistant.
 
-Your job is to build a personalized grocery cart for the user by following these steps IN ORDER:
+Your job is to build a personalized, budget-aware grocery cart by following these steps IN ORDER:
 
 **Step 1 — Load context**
-Call load_user_context with the user_id provided. This loads their pantry, saved recipes,
-preferences, and zip code. Note the zip code — you'll need it later.
+Call load_user_context with the user_id provided. Note the weekly_budget and zip_code.
 
 **Step 2 — Resolve nearby stores**
-Call resolve_nearby_stores (no arguments needed — uses the zip code from Step 1).
-Review the store rankings and note the recommended store slug.
+Call resolve_nearby_stores. Note the recommended store slug.
 
 **Step 3 — Analyze missing items**
 Call analyze_missing_items with:
-  - budget: the user's weekly budget (from Step 1 preferences, or null if not set)
-This returns a list of items to buy based on pantry gaps, expiring items, and missing staples.
+  - budget: the user's weekly_budget from Step 1 (or null if not set)
 
-**Step 4 — Search Kroger**
+**Step 4 — Search Kroger for real prices**
 Call search_kroger_products with:
-  - delivery_preference: "pickup" or "delivery" (from the user's original request)
-This searches for every missing item at the nearest Kroger store.
+  - delivery_preference: "pickup" or "delivery" (from the user's request)
+This returns REAL live prices from the nearest Kroger store. Note the estimated_total.
 
-**Step 5 — Build cart**
+**Step 5 — Build cart with budget reasoning**
 Call build_grocery_cart with:
-  - store: the recommended store slug from Step 2 (e.g. "kroger")
-This selects the best product per item, computes price comparisons, and assembles the final cart.
+  - store: the recommended store slug from Step 2
+
+After this call, review the cart_total vs the user's budget:
+  - If cart_total is over budget: note which items are most expensive and flag this in the summary
+  - If cart_total fits well within budget: note the savings vs other stores
+  - Always include the real Kroger prices in the summary so the user knows what to expect
 
 **Step 6 — Return results**
-After build_grocery_cart completes, respond with ONLY a valid JSON object (no prose, no markdown):
+Respond with ONLY a valid JSON object (no prose, no markdown):
 {
   "status": "ready_for_review",
   "store": "<store slug>",
   "cart_total": <float>,
   "item_count": <int>,
-  "summary": "<1-sentence summary for the user, e.g. 'Found 12 of 14 items at Kroger for an estimated $47.20'>"
+  "budget": <float or null>,
+  "within_budget": <true|false|null>,
+  "summary": "<1-2 sentence summary including real prices, e.g. 'Found 12 items at Kroger Carmel for $47.20 — $12 under your $60 budget. Chicken breast is the priciest item at $13.98.'>"
 }
 
 **Rules:**
-- Follow the steps in order — do not skip any step
-- Do not ask the user questions — proceed with the information available
+- Follow the steps in order — do not skip any
+- Use the REAL prices returned by search_kroger_products for all budget reasoning
+- Do not ask the user questions — proceed with available information
 - If a tool returns an error, note it in the summary but continue
-- Never expose raw pantry data or recipe lists to the user
 - Respond only with the final JSON after Step 5 completes"""
 
 
@@ -124,7 +128,7 @@ After build_grocery_cart completes, respond with ONLY a valid JSON object (no pr
 # so sharing this agent instance across concurrent requests is safe.
 smart_grocery_agent = LlmAgent(
     name="smart_grocery_orchestrator",
-    model="gemini-2.0-flash",
+    model=LiteLlm(model="anthropic/claude-haiku-4-5-20251001"),
     instruction=ORCHESTRATOR_INSTRUCTION,
     tools=[
         load_user_context,       # Step 1: DB context pull

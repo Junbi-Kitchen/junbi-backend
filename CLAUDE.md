@@ -215,6 +215,50 @@ GCV_API_KEY=...                            # Google Cloud Vision (receipt scanni
 
 ---
 
+## Kroger Integration (`app/agents/kroger_client/`)
+
+Direct REST client — **no LLM, no MCP**. Uses the `kroger-api` Python library (sync/requests), run via `asyncio.to_thread` so the FastAPI event loop is never blocked.
+
+**Auth:** Client Credentials only (scope: `product.compact`). Sufficient for location search + product search. User-scoped OAuth (cart add) is not yet implemented.
+
+**Why no ADK/LLM for product search:** ADK re-sends the full conversation history on every LLM call. 10 items × 5 products each = 50k+ input tokens/min → Tier 1 rate limit hit after 5 items. Product search is deterministic — no LLM needed.
+
+**`KrogerProduct` fields:** 23 fields including `organic`, `allergens`, `manufacturer_declarations`, `stock_level`, `fulfillment_*`, `temperature`, `rating`, `nutrition`. These feed the smart grocery agent's personalization prompt.
+
+**Nutrition caveat:** `product.compact` scope does not return calorie/macro values — those come from the full product detail endpoint. All `nutrition.*` sub-fields will be `None` until that endpoint is called.
+
+**`nutritionInformation` API shape:** Kroger returns it as either a dict `{"labelNutrients": [...]}` or directly as a list. `_extract_nutrition()` in `runner.py` handles both.
+
+**Credentials:** Never commit. `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` live in `.env` only. `.kroger_token*.json` and `kroger_preferences.json` (auto-created by kroger-api library) are gitignored.
+
+**Test scripts:**
+```bash
+python scripts/kroger/kroger_smoke_test.py          # prices + cart preview
+python scripts/kroger/kroger_rich_fields_test.py    # validates all 23 KrogerProduct fields
+python scripts/kroger/kroger_locations_test.py      # store lookup across 8 US zip codes
+```
+
+---
+
+## Smart Grocery Agent (`app/agents/smart_grocery_agent/`)
+
+ADK `LlmAgent` orchestrator using `LiteLlm(model="anthropic/claude-haiku-4-5-20251001")`.
+
+**Model history:** Started on `gemini-2.0-flash` → switched to Anthropic after Google free tier quota exhausted. Account has new-generation models only (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6`) — claude-3 series returns 404.
+
+**Tool call order (enforced in system prompt):**
+1. `load_user_context` — DB: pantry, recipes, grocery list, preferences, zip code
+2. `resolve_nearby_stores` — scores Kroger-family stores by budget/dietary fit
+3. `analyze_missing_items` — Claude identifies recipe gaps, expiring items, staples
+4. `search_kroger_products` — calls `kroger_client.search_kroger()` (direct API, no LLM)
+5. `build_grocery_cart` — Claude picks best product per item with budget + dietary reasoning
+
+**`_claude_refine_cart` personalization:** Translates user `dietaryTags` + `allergies` into explicit prompt instructions. Passes full `KrogerProduct` data (allergens, nutrition, organic flag, sale price, stock level, rating) per option. Claude must respect hard allergen blocks before budget or quality.
+
+**Data flow:** Large payloads (pantry dumps, Kroger results) live in `ToolContext.state`, not in LLM context. Each tool returns only a short summary string — keeps token usage low.
+
+---
+
 ## Gotchas
 
 - `db/schema.sql` is auto-generated — edit migrations in `db/migrations/`, never the schema file directly
@@ -222,3 +266,5 @@ GCV_API_KEY=...                            # Google Cloud Vision (receipt scanni
 - Firebase service account key path: leave `FIREBASE_SERVICE_ACCOUNT_KEY` blank when deploying to Cloud Run (uses ADC automatically)
 - `CORS allow_origins=["*"]` — restrict this before production
 - Python version is locked at 3.13 via `.python-version`; use pyenv to match
+- Kroger `kroger-api` library is sync (uses `requests`) — always call via `asyncio.to_thread`, never directly in an async route
+- fastmcp 3.x removed the `Image` export — kroger-mcp 0.2.0 requires a compatibility patch in its cached install if you ever use the MCP path
