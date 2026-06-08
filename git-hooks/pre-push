@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-push hook — enforces a worklogs/ entry on every push
+#
+# Install once per clone:
+#   bash scripts/setup-hooks.sh
+#
+# Skip for automated CI or hotfixes (use sparingly):
+#   SKIP_WORKLOG_CHECK=1 git push
+# ─────────────────────────────────────────────────────────────────────────────
+
+set -euo pipefail
+
+if [[ "${SKIP_WORKLOG_CHECK:-}" == "1" ]]; then
+  echo "⚠️  SKIP_WORKLOG_CHECK=1 — worklog enforcement bypassed"
+  exit 0
+fi
+
+# Read what's being pushed from stdin (format: <local_ref> <local_sha> <remote_ref> <remote_sha>)
+while read local_ref local_sha remote_ref remote_sha; do
+
+  # Skip branch deletions
+  if [[ "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
+    continue
+  fi
+
+  # If remote_sha is all zeros the branch is new — compare against the default branch
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    base=$(git rev-parse --verify origin/main 2>/dev/null || \
+           git rev-parse --verify origin/master 2>/dev/null || \
+           git rev-list --max-parents=0 HEAD)
+  else
+    base="$remote_sha"
+  fi
+
+  # Get the list of commits being pushed that aren't already on remote
+  commits=$(git log --format="%H" "$base".."$local_sha" 2>/dev/null)
+
+  if [[ -z "$commits" ]]; then
+    continue  # nothing new to push
+  fi
+
+  # Check if any commit in this push touches the worklogs/ folder
+  worklog_changed=$(git diff --name-only "$base".."$local_sha" -- 'worklogs/*.md' 2>/dev/null)
+
+  if [[ -z "$worklog_changed" ]]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║  🚫  PUSH BLOCKED — missing worklog entry                ║"
+    echo "╠══════════════════════════════════════════════════════════╣"
+    echo "║                                                          ║"
+    echo "║  Every push requires a new file in worklogs/             ║"
+    echo "║                                                          ║"
+    echo "║  Run /junbi-worklog in Claude Code, or manually:         ║"
+    echo "║                                                          ║"
+    echo "║    File format:                                          ║"
+    echo "║    worklogs/YYYY-MM-DD_HHMM_<github-name>_<topic>.md    ║"
+    echo "║                                                          ║"
+    echo "║    Example:                                              ║"
+    echo "║    worklogs/2026-06-07_1430_Jaden24_auth-fix.md         ║"
+    echo "║                                                          ║"
+    echo "║  Then: git add worklogs/<file>.md && git commit          ║"
+    echo "║                                                          ║"
+    echo "║  To bypass (hotfixes only):                              ║"
+    echo "║    SKIP_WORKLOG_CHECK=1 git push                         ║"
+    echo "║                                                          ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+    echo ""
+    exit 1
+  fi
+
+  echo "✓ Worklog entry found: $worklog_changed"
+
+done
+
+exit 0

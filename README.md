@@ -120,6 +120,84 @@ Once running, interactive docs are available at:
 curl http://localhost:8000/health
 ```
 
+---
+
+## Team Workflow
+
+### First-time setup (run once after cloning)
+
+```bash
+bash scripts/setup-hooks.sh
+```
+
+This installs the `pre-push` git hook from `git-hooks/`. **Every teammate must run this** — hooks aren't shared automatically by git.
+
+### Worklog requirement
+
+Every push requires a worklog entry. The pre-push hook enforces this — it will block your push and show instructions if you forget.
+
+**How to write one (recommended):** Run `/junbi-worklog` in Claude Code. It reads your git diff and writes the file for you. All entries live in `worklogs/` — one file per push, named by date, time, and author.
+
+### Updating CLAUDE.md (optional, intentional)
+
+`CLAUDE.md` is the architectural reference — it documents conventions, library constraints, and gotchas that every developer and Claude session needs to know. It is **not** updated automatically on every push.
+
+Run `/junbi-update-claude` in Claude Code when you've made a decision worth documenting:
+- Added a library with non-obvious usage constraints
+- Discovered an API quirk and wrote a workaround
+- Established a new pattern or convention
+- Changed something that would trip up a teammate or future Claude session
+
+Don't run it just because you shipped a feature — that's what `worklogs/` is for.
+
+**How to write one manually:**
+
+1. Create a new file in `worklogs/` named:
+   ```
+   worklogs/YYYY-MM-DD_HHMM_<your-github-username>_<short-topic>.md
+   ```
+   Example: `worklogs/2026-06-07_1430_Jaden24_kroger-client-rewrite.md`
+
+2. Fill it in:
+   ```markdown
+   # YYYY-MM-DD HH:MM — <your-name> — <topic>
+
+   **Branch:** <branch-name>
+   **Repo:** gook-backend
+
+   ---
+
+   ## What was done
+   - ...
+
+   ## Decisions made
+   - ...
+
+   ## Bottlenecks hit
+   - ...
+
+   ## Still mocked / pending
+   - ...
+
+   ## Next up
+   - ...
+   ```
+
+3. Commit it alongside your code:
+   ```bash
+   git add worklogs/<filename>.md
+   git commit -m "chore: worklog for <topic>"
+   git push   # hook passes ✓
+   ```
+
+### Emergency bypass (hotfixes only)
+
+```bash
+SKIP_WORKLOG_CHECK=1 git push
+```
+
+Use sparingly — it's visible in git history that the check was skipped.
+
 ## Project Structure
 
 ```

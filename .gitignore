@@ -25,6 +25,10 @@ serviceAccountKey.json
 *serviceAccount*.json
 *firebase-adminsdk*.json
 
+# Kroger OAuth tokens and local preferences (never commit — rotate if exposed)
+.kroger_token*.json
+kroger_preferences.json
+
 # Python version (machine-specific)
 .python-version
 
