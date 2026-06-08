@@ -60,7 +60,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from app.db import get_async_pool
-from config import settings
+from app.config import settings
 from .agent import smart_grocery_agent
 
 logger = logging.getLogger(__name__)

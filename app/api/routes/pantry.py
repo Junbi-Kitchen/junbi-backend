@@ -12,7 +12,7 @@ from app.core.dependencies import get_current_user
 from app.services.receipt_parser import parse_receipt_image
 from app.db import get_db
 from app.services.ingredient_resolver import run_ingredient_resolver
-from config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 

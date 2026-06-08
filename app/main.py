@@ -10,7 +10,7 @@ from firebase_admin import credentials
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
+from app.config import settings
 from app.db import open_pool, close_pool, get_async_pool
 from app.agents.ingredient_resolver.resources import set_pool_provider
 from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents

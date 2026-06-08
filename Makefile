@@ -11,4 +11,4 @@ seed:
 	$(VENV)/python scripts/seed/seed_mock.py
 
 adk:
-	PYTHONPATH=. $(VENV)/adk web app/agents/
+	$(VENV)/adk web app/agents/
