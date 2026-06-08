@@ -1,6 +1,6 @@
 import logging
 
-from app.db import get_async_pool
+from .resources import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def _embed(text: str) -> str | None:
 
 async def search_fulltext(normalized_name: str) -> list[dict]:
     """Search ingredients by full-text. Returns up to 5 candidates with id, name, score."""
-    pool = get_async_pool()
+    pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -49,7 +49,7 @@ async def search_vector(normalized_name: str) -> list[dict]:
     vec_str = _embed(normalized_name)
     if not vec_str:
         return []
-    pool = get_async_pool()
+    pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -69,7 +69,7 @@ async def search_vector(normalized_name: str) -> list[dict]:
 async def create_ingredient(normalized_name: str, raw_name: str) -> dict:
     """Create a new canonical ingredient. Only call when no existing candidate is the same food."""
     vec_str = _embed(normalized_name)
-    pool = get_async_pool()
+    pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(

@@ -11,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from app.db import open_pool, close_pool
+from app.db import open_pool, close_pool, get_async_pool
+from app.agents.ingredient_resolver.resources import set_pool_provider
 from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents
 
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +31,8 @@ else:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await open_pool()
+    # Let the in-process agent reuse the app's pool instead of opening its own.
+    set_pool_provider(get_async_pool)
     yield
     await close_pool()
 

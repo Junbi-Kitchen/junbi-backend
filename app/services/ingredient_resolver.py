@@ -8,7 +8,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
 from app.agents.ingredient_resolver import root_agent
-from app.db import get_async_pool
+from app.agents.ingredient_resolver.resources import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def _normalize(raw: str) -> str:
 
 
 async def _prescreen(raw_name: str, normalized_name: str) -> str | None:
-    pool = get_async_pool()
+    pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -80,7 +80,7 @@ async def _prescreen(raw_name: str, normalized_name: str) -> str | None:
 
 
 async def _create_fallback(name: str) -> str:
-    pool = get_async_pool()
+    pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
