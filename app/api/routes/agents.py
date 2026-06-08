@@ -1,22 +1,21 @@
 """
-Agent API routes.
+Agent API routes — Smart Grocery (ADK orchestrator).
 
-Smart Grocery — 3 endpoints:
+Same 3 endpoints as before, now backed by the ADK runner instead of LangGraph.
 
   POST /agents/smart-grocery/start
-    → Kicks off the graph. Runs until human_checkpoint interrupt.
-    → Returns cart preview, price comparison, savings summary.
+    → Runs the ADK orchestrator (load context → analyze → Kroger search → build cart).
+    → Returns cart preview for user review.
 
   POST /agents/smart-grocery/confirm
-    → Resumes the graph after user review.
-    → confirmed=true  → places order, writes to DB, returns checkout URL.
-    → confirmed=false → cancels, returns status.
+    → Confirms or cancels the planned cart.
+    → confirmed=true  → adds to Kroger cart + writes to DB → returns checkout URL.
+    → confirmed=false → cleans up session → returns cancelled status.
 
-  GET  /agents/smart-grocery/status/{thread_id}
-    → Returns current graph state for a session (polling / resume).
+  GET  /agents/smart-grocery/status/{session_id}
+    → Returns current session state (pending / confirmed / cancelled).
 """
 
-import time
 import logging
 from typing import Literal
 
@@ -24,8 +23,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
-from app.agents.smart_grocery.graph import graph
-from app.agents.smart_grocery.state import SmartGroceryState
+from app.agents.smart_grocery_agent.runner import (
+    start_grocery_agent,
+    confirm_grocery_order,
+    _pending_sessions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,63 +39,14 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 # ---------------------------------------------------------------------------
 
 class StartSmartGroceryRequest(BaseModel):
-    # Instacart retailer slug — what store the user wants to shop at.
-    # Use 'instacart' to let Instacart auto-select the best available retailer.
-    store_preference: str = "instacart"
     delivery_preference: Literal["delivery", "pickup"] = "delivery"
     budget: float | None = None
-    zip_code: str | None = None  # used to resolve store_id via getStores()
 
 
 class ConfirmSmartGroceryRequest(BaseModel):
-    thread_id: str
+    session_id: str
     confirmed: bool
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _thread_id(user_id: str, session_ts: int) -> str:
-    return f"smart-grocery-{user_id}-{session_ts}"
-
-
-def _extract_interrupt_payload(graph_state) -> dict | None:
-    """Pull the interrupt payload out of graph state tasks if present."""
-    tasks = getattr(graph_state, "tasks", None) or []
-    for task in tasks:
-        interrupts = getattr(task, "interrupts", None) or []
-        for interrupt in interrupts:
-            value = getattr(interrupt, "value", None)
-            if value:
-                return value
-    return None
-
-
-def _format_run_response(state_values: dict, thread_id: str, status: str) -> dict:
-    return {
-        "thread_id": thread_id,
-        "status": status,
-        # What the user sees for review
-        "cart": {
-            "items": state_values.get("cart_items", []),
-            "total": state_values.get("cart_total", 0),
-            "item_count": len(state_values.get("cart_items", [])),
-            "store": state_values.get("store_preference"),
-            "delivery_preference": state_values.get("delivery_preference"),
-        },
-        "price_comparison": state_values.get("price_comparison", {}),
-        "savings_summary": state_values.get("savings_summary", {}),
-        "missing_items": state_values.get("missing_items", []),
-        "pantry_snapshot": {
-            "total_items": len(state_values.get("pantry_items", [])),
-            "expiring_count": sum(
-                1 for i in state_values.get("pantry_items", [])
-                if i.get("freshnessStatus") in ("expiring", "use_soon", "expired")
-            ),
-        },
-        "error": state_values.get("error"),
-    }
+    store_override: str | None = None  # user can switch store at review screen
 
 
 # ---------------------------------------------------------------------------
@@ -106,57 +59,23 @@ async def start_smart_grocery(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """
-    Start a new Smart Grocery agent session.
+    Start a new Smart Grocery session.
 
-    Runs the full graph up to the human_checkpoint interrupt.
-    Returns the cart preview, price comparisons, and savings info
-    for the user to review before confirming the order.
+    Runs the full ADK planning pipeline (pantry analysis → Kroger product search
+    → cart building) and returns the cart for user review.
     """
     uid = current_user["id"]
-    session_ts = int(time.time())
-    thread_id = _thread_id(uid, session_ts)
-    config = {"configurable": {"thread_id": thread_id}}
-
-    initial_state: SmartGroceryState = {
-        "user_id": uid,
-        "store_preference": body.store_preference,
-        "store_id": None,        # resolved by load_context via Instacart getStores()
-        "delivery_preference": body.delivery_preference,
-        "budget": body.budget,
-        # All other fields start empty — nodes populate them
-        "pantry_items": [],
-        "saved_recipes": [],
-        "existing_grocery_items": [],
-        "user_preferences": {},
-        "missing_items": [],
-        "store_search_results": {},
-        "price_comparison": {},
-        "savings_summary": {},
-        "cart_items": [],
-        "cart_total": 0.0,
-        "cart_id": None,
-        "order_confirmed": None,
-        "order_result": None,
-        "grocery_list_id": None,
-        "messages": [],
-        "error": None,
-    }
-
     try:
-        # Run until interrupt_before=["human_checkpoint"]
-        await graph.ainvoke(initial_state, config=config)
+        result = await start_grocery_agent(
+            user_id=uid,
+            delivery_preference=body.delivery_preference,
+            budget=body.budget,
+        )
     except Exception as e:
         logger.error("smart_grocery start failed for user %s: %s", uid, e)
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
-    # Read state after the run (graph is paused at human_checkpoint)
-    graph_state = graph.get_state(config)
-    state_values = graph_state.values
-
-    return {
-        **_format_run_response(state_values, thread_id, "awaiting_confirmation"),
-        "session_ts": session_ts,
-    }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -169,86 +88,65 @@ async def confirm_smart_grocery(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """
-    Resume the paused graph after user reviews the cart.
+    Confirm or cancel a planned grocery cart.
 
-    confirmed=true  → place_order → finalize → returns checkout URL
-    confirmed=false → cancelled   → returns cancelled status
+    confirmed=true  → adds items to Kroger cart + writes to DB grocery list
+    confirmed=false → session cleaned up, returns cancelled
     """
     uid = current_user["id"]
-    config = {"configurable": {"thread_id": body.thread_id}}
-
-    # Verify this thread belongs to the current user
-    if not body.thread_id.startswith(f"smart-grocery-{uid}-"):
-        raise HTTPException(status_code=403, detail="Thread does not belong to this user")
-
-    # Check graph is actually paused
-    graph_state = graph.get_state(config)
-    if not graph_state or not graph_state.values:
-        raise HTTPException(status_code=404, detail="Session not found or already completed")
-
     try:
-        # Resume graph — pass the user's confirmation decision
-        await graph.ainvoke(
-            {"order_confirmed": body.confirmed},
-            config=config,
+        result = await confirm_grocery_order(
+            session_id=body.session_id,
+            user_id=uid,
+            confirmed=body.confirmed,
+            store_override=body.store_override,
         )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
     except Exception as e:
         logger.error("smart_grocery confirm failed for user %s: %s", uid, e)
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
-    graph_state = graph.get_state(config)
-    state_values = graph_state.values
-    order_result = state_values.get("order_result", {})
-
-    if not body.confirmed:
-        return {"thread_id": body.thread_id, "status": "cancelled"}
-
-    return {
-        "thread_id": body.thread_id,
-        "status": "order_placed",
-        "order": order_result,
-        "grocery_list_id": state_values.get("grocery_list_id"),
-        "cart_total": state_values.get("cart_total", 0),
-        # checkout_url is opened in in-app WebView by the frontend
-        "checkout_url": order_result.get("checkout_url"),
-        "method": order_result.get("method"),
-    }
+    return result
 
 
 # ---------------------------------------------------------------------------
-# GET /agents/smart-grocery/status/{thread_id}
+# GET /agents/smart-grocery/status/{session_id}
 # ---------------------------------------------------------------------------
 
-@router.get("/smart-grocery/status/{thread_id}")
+@router.get("/smart-grocery/status/{session_id}")
 def smart_grocery_status(
-    thread_id: str,
+    session_id: str,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """
-    Poll current state of an active Smart Grocery session.
-    Useful for the frontend to show live progress during the agent run.
+    Check the status of a Smart Grocery session.
     """
     uid = current_user["id"]
+    pending = _pending_sessions.get(session_id)
 
-    if not thread_id.startswith(f"smart-grocery-{uid}-"):
-        raise HTTPException(status_code=403, detail="Thread does not belong to this user")
+    if not pending:
+        raise HTTPException(status_code=404, detail="Session not found or already completed")
+    if pending["user_id"] != uid:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
 
-    config = {"configurable": {"thread_id": thread_id}}
-    graph_state = graph.get_state(config)
+    state = pending["state"]
+    cart_items = state.get("cart_items", [])
 
-    if not graph_state or not graph_state.values:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    state_values = graph_state.values
-    next_nodes = graph_state.next
-
-    # Determine human-readable status
-    if not next_nodes:
-        order_result = state_values.get("order_result", {})
-        status = order_result.get("status", "completed")
-    elif "human_checkpoint" in next_nodes:
-        status = "awaiting_confirmation"
-    else:
-        status = "running"
-
-    return _format_run_response(state_values, thread_id, status)
+    return {
+        "session_id": session_id,
+        "status": "awaiting_confirmation",
+        "cart": {
+            "items": cart_items,
+            "total": state.get("cart_total", 0),
+            "item_count": len(cart_items),
+            "store": state.get("store_preference", "kroger"),
+            "delivery_preference": state.get("delivery_preference", "delivery"),
+        },
+        "price_comparison": state.get("price_comparison", {}),
+        "savings_summary": state.get("savings_summary", {}),
+        "nearby_stores": state.get("nearby_stores", []),
+        "missing_items": state.get("missing_items", []),
+    }

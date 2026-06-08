@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     INSTACART_SERVICE_URL: str = "http://localhost:3001"
     INSTACART_SERVICE_KEY: str | None = None
 
+    # Kroger API (developer.kroger.com)
+    KROGER_CLIENT_ID: str | None = None
+    KROGER_CLIENT_SECRET: str | None = None
+    KROGER_REDIRECT_URI: str = "http://localhost:8000/auth/kroger/callback"
+
+    # Google ADK (for Kroger agent LLM)
+    GOOGLE_API_KEY: str | None = None
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
