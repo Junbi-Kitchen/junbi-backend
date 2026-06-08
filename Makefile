@@ -9,3 +9,6 @@ migrate:
 seed:
 	$(VENV)/python scripts/seed/seed_usda.py
 	$(VENV)/python scripts/seed/seed_mock.py
+
+adk:
+	PYTHONPATH=. $(VENV)/adk web app/agents/
