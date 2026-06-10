@@ -9,8 +9,9 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
+from app.services.ingredient_resolver import run_ingredient_resolver
 from app.services.recipe_parser import parse_from_image, parse_from_instagram, parse_from_tiktok, parse_from_youtube
-from config import settings
+from app.config import settings
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -110,15 +111,6 @@ async def _build_recipe(cur, row: dict) -> dict:
     }
 
 
-async def _resolve_ingredient(cur, name: str) -> str:
-    await cur.execute(
-        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
-        (name,),
-    )
-    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str((await cur.fetchone())["id"])
-
-
 async def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
     difficulty = DIFFICULTY_MAP.get(body.difficulty, "medium")
     source_type = SOURCE_TYPE_MAP.get(body.importedFrom, "manual")
@@ -149,7 +141,7 @@ async def _insert_recipe(cur, user_id: str, body: CreateRecipeRequest) -> dict:
         name = ing.get("name", "")
         if not name:
             continue
-        ingredient_id = await _resolve_ingredient(cur, name)
+        ingredient_id = await run_ingredient_resolver(name)
         await cur.execute("""
             INSERT INTO recipe_ingredients
                 (recipe_id, ingredient_id, quantity, unit, display_text, order_index)

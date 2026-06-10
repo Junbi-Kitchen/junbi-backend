@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
+from app.services.ingredient_resolver import run_ingredient_resolver
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -68,15 +69,6 @@ async def _build_order(cur, row: dict) -> dict:
         "estimatedPickup": estimated_pickup,
         "placedAt": placed_at.isoformat().replace("+00:00", "Z") if placed_at else None,
     }
-
-
-async def _resolve_ingredient(cur, name: str) -> str:
-    await cur.execute(
-        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
-        (name,),
-    )
-    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str((await cur.fetchone())["id"])
 
 
 @router.get("/active")
@@ -182,7 +174,7 @@ async def place_order(
     for item in body.items:
         name = item.get("name", "")
         if name:
-            ingredient_id = await _resolve_ingredient(cur, name)
+            ingredient_id = await run_ingredient_resolver(name)
             item_rows.append((
                 oid, ingredient_id,
                 item.get("quantity", 1), item.get("unit", ""),

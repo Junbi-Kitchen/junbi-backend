@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_current_user
 from app.db import get_db
+from app.services.ingredient_resolver import run_ingredient_resolver
 
 router = APIRouter(prefix="/grocery", tags=["grocery"])
 
@@ -43,15 +44,6 @@ class UpdateGroceryItemBody(BaseModel):
 
 class GenerateRequest(BaseModel):
     recipe_ids: list[str]
-
-
-async def _resolve_ingredient(cur, name: str) -> str:
-    await cur.execute(
-        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
-        (name,),
-    )
-    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
-    return str((await cur.fetchone())["id"])
 
 
 async def _get_or_create_list(cur, user_id: str) -> str:
@@ -121,7 +113,7 @@ async def add_item(
 ) -> dict:
     cur = db.cursor()
     list_id = await _get_or_create_list(cur, current_user["id"])
-    ingredient_id = await _resolve_ingredient(cur, body.name)
+    ingredient_id = await run_ingredient_resolver(body.name)
     aisle = body.aisle or CATEGORY_TO_AISLE.get(body.category or "", "Pantry")
     await cur.execute("""
         INSERT INTO grocery_items

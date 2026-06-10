@@ -56,7 +56,7 @@ import anthropic
 from google.adk.tools import ToolContext
 
 from app.db import get_async_pool
-from config import settings
+from app.config import settings
 from app.agents.kroger_client import search_kroger
 
 logger = logging.getLogger(__name__)

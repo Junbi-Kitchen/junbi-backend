@@ -5,7 +5,7 @@ from psycopg.rows import dict_row
 
 
 
-from config import settings
+from app.config import settings
 
 # Async pool — used by all FastAPI route handlers via get_db()
 _async_pool: psycopg_pool.AsyncConnectionPool | None = None
