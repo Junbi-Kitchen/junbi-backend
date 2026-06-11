@@ -1,0 +1,909 @@
+{
+  "comment": "Synthetic recipe catalog for the meal-planning loop (docs/meal-planning-final-strategy.md). Prices are per typical purchase pack (USD); cost math buys one pack per missing ingredient (v1 'have any = covered'). Allergen-bearing recipes (shellfish, peanuts, tree nuts, fish) are deliberately included so L1 safety filtering is demonstrable.",
+  "prices": {
+    "chicken breast": [6.49, "1.5 lb pack"],
+    "chicken thighs": [5.99, "1.5 lb pack"],
+    "whole chicken": [8.99, "each"],
+    "ground beef": [6.99, "1 lb pack"],
+    "beef sirloin": [9.99, "1 lb"],
+    "beef chuck": [8.49, "1 lb"],
+    "pork shoulder": [7.99, "2 lb"],
+    "pork tenderloin": [8.49, "1 lb"],
+    "ground pork": [5.49, "1 lb pack"],
+    "bacon": [5.99, "12 oz pack"],
+    "italian sausage": [5.49, "1 lb pack"],
+    "ham": [4.99, "8 oz pack"],
+    "lamb shoulder": [11.99, "1 lb"],
+    "ground lamb": [9.49, "1 lb pack"],
+    "salmon fillet": [11.99, "1 lb"],
+    "cod fillet": [9.99, "1 lb"],
+    "tilapia fillet": [7.99, "1 lb"],
+    "shrimp": [10.99, "1 lb bag"],
+    "tofu": [2.49, "14 oz block"],
+    "paneer": [4.99, "8 oz block"],
+    "eggs": [3.99, "dozen"],
+    "milk": [3.49, "half gallon"],
+    "heavy cream": [4.29, "pint"],
+    "butter": [4.99, "1 lb"],
+    "parmesan cheese": [5.99, "8 oz wedge"],
+    "mozzarella cheese": [4.99, "8 oz ball"],
+    "cheddar cheese": [4.49, "8 oz block"],
+    "feta cheese": [4.99, "6 oz block"],
+    "monterey jack cheese": [4.49, "8 oz block"],
+    "gruyere cheese": [7.99, "6 oz block"],
+    "cream cheese": [2.99, "8 oz"],
+    "greek yogurt": [4.99, "32 oz tub"],
+    "sour cream": [2.49, "16 oz tub"],
+    "spaghetti": [1.99, "1 lb box"],
+    "penne pasta": [1.99, "1 lb box"],
+    "rigatoni": [1.99, "1 lb box"],
+    "lasagna noodles": [2.49, "1 lb box"],
+    "rice noodles": [2.99, "8 oz pack"],
+    "udon noodles": [3.49, "14 oz pack"],
+    "egg noodles": [2.99, "12 oz pack"],
+    "ramen noodles": [2.49, "4 pack"],
+    "white rice": [3.99, "2 lb bag"],
+    "jasmine rice": [4.99, "2 lb bag"],
+    "basmati rice": [5.49, "2 lb bag"],
+    "arborio rice": [4.99, "1 lb bag"],
+    "brown lentils": [2.49, "1 lb bag"],
+    "red lentils": [2.69, "1 lb bag"],
+    "chickpeas": [1.29, "15 oz can"],
+    "black beans": [1.19, "15 oz can"],
+    "kidney beans": [1.19, "15 oz can"],
+    "flour": [3.49, "5 lb bag"],
+    "panko breadcrumbs": [2.99, "8 oz box"],
+    "tortillas": [3.49, "10 pack"],
+    "corn tortillas": [2.99, "30 pack"],
+    "burger buns": [2.99, "8 pack"],
+    "sandwich bread": [3.49, "loaf"],
+    "baguette": [2.99, "each"],
+    "pita bread": [2.99, "6 pack"],
+    "flatbread": [3.49, "4 pack"],
+    "tortilla chips": [3.49, "11 oz bag"],
+    "onion": [0.89, "each"],
+    "red onion": [0.99, "each"],
+    "garlic": [0.79, "head"],
+    "ginger": [1.49, "4 oz knob"],
+    "scallions": [1.29, "bunch"],
+    "shallots": [1.99, "3 pack"],
+    "tomatoes": [2.99, "4 pack"],
+    "cherry tomatoes": [3.49, "pint"],
+    "canned tomatoes": [1.89, "28 oz can"],
+    "tomato paste": [1.29, "6 oz can"],
+    "tomato sauce": [1.49, "15 oz can"],
+    "bell peppers": [3.99, "3 pack"],
+    "jalapeno": [0.49, "each"],
+    "broccoli": [2.49, "head"],
+    "carrots": [1.99, "1 lb bag"],
+    "celery": [2.29, "bunch"],
+    "cucumber": [0.99, "each"],
+    "zucchini": [1.49, "each"],
+    "eggplant": [1.99, "each"],
+    "spinach": [3.99, "10 oz bag"],
+    "kale": [2.99, "bunch"],
+    "romaine lettuce": [2.99, "2 pack"],
+    "cabbage": [2.49, "head"],
+    "napa cabbage": [3.49, "head"],
+    "bok choy": [2.99, "1 lb"],
+    "green beans": [2.99, "1 lb bag"],
+    "mushrooms": [2.99, "8 oz pack"],
+    "shiitake mushrooms": [4.49, "5 oz pack"],
+    "cauliflower": [3.49, "head"],
+    "potatoes": [4.99, "5 lb bag"],
+    "sweet potatoes": [3.49, "3 pack"],
+    "corn": [2.49, "4 ears"],
+    "frozen peas": [2.29, "12 oz bag"],
+    "avocado": [1.99, "each"],
+    "lime": [0.59, "each"],
+    "lemon": [0.79, "each"],
+    "orange juice": [4.49, "52 oz"],
+    "pineapple": [3.49, "each"],
+    "cilantro": [1.29, "bunch"],
+    "parsley": [1.29, "bunch"],
+    "basil": [2.99, "pack"],
+    "thai basil": [2.99, "pack"],
+    "mint": [2.49, "pack"],
+    "dill": [2.49, "pack"],
+    "rosemary": [2.49, "pack"],
+    "thyme": [2.49, "pack"],
+    "lemongrass": [2.99, "3 stalks"],
+    "olive oil": [8.99, "500 ml"],
+    "vegetable oil": [4.99, "48 oz"],
+    "sesame oil": [4.99, "8 oz"],
+    "soy sauce": [3.49, "15 oz"],
+    "fish sauce": [3.99, "8 oz"],
+    "oyster sauce": [3.99, "9 oz"],
+    "hoisin sauce": [3.79, "9 oz"],
+    "rice vinegar": [3.29, "12 oz"],
+    "mirin": [4.49, "10 oz"],
+    "miso paste": [5.99, "14 oz tub"],
+    "gochujang": [4.99, "17 oz tub"],
+    "kimchi": [6.99, "14 oz jar"],
+    "sriracha": [3.99, "17 oz"],
+    "curry paste": [3.49, "4 oz jar"],
+    "curry powder": [3.99, "jar"],
+    "garam masala": [4.49, "jar"],
+    "turmeric": [3.49, "jar"],
+    "cumin": [3.49, "jar"],
+    "smoked paprika": [3.99, "jar"],
+    "chili powder": [3.49, "jar"],
+    "oregano": [2.99, "jar"],
+    "cinnamon": [3.49, "jar"],
+    "bay leaves": [2.99, "jar"],
+    "red pepper flakes": [2.99, "jar"],
+    "black pepper": [3.99, "jar"],
+    "salt": [1.99, "26 oz"],
+    "sugar": [3.49, "4 lb bag"],
+    "brown sugar": [2.99, "2 lb bag"],
+    "honey": [5.99, "12 oz"],
+    "maple syrup": [7.99, "8 oz"],
+    "ketchup": [3.49, "20 oz"],
+    "mayonnaise": [4.49, "30 oz jar"],
+    "dijon mustard": [3.29, "8 oz jar"],
+    "bbq sauce": [3.49, "18 oz"],
+    "buffalo sauce": [3.99, "12 oz"],
+    "salsa": [3.49, "16 oz jar"],
+    "enchilada sauce": [2.49, "15 oz can"],
+    "pesto": [4.99, "6 oz jar"],
+    "marinara sauce": [3.49, "24 oz jar"],
+    "coconut milk": [2.29, "13.5 oz can"],
+    "chicken broth": [2.49, "32 oz carton"],
+    "beef broth": [2.49, "32 oz carton"],
+    "vegetable broth": [2.49, "32 oz carton"],
+    "red wine": [9.99, "bottle"],
+    "white wine": [8.99, "bottle"],
+    "peanuts": [3.49, "12 oz jar"],
+    "peanut butter": [3.99, "16 oz jar"],
+    "cashews": [6.99, "8 oz bag"],
+    "almonds": [6.49, "8 oz bag"],
+    "walnuts": [7.49, "8 oz bag"],
+    "sesame seeds": [3.49, "jar"],
+    "tahini": [6.99, "16 oz jar"],
+    "hummus": [4.49, "10 oz tub"],
+    "olives": [3.99, "jar"],
+    "capers": [3.49, "jar"],
+    "raisins": [3.29, "12 oz box"],
+    "tortilla wraps": [3.49, "8 pack"],
+    "cornstarch": [2.49, "16 oz box"],
+    "vanilla extract": [5.99, "2 oz"],
+    "nori": [3.99, "10 sheets"],
+    "dashi stock": [5.49, "pack"],
+    "tuna": [1.79, "5 oz can"],
+    "anchovies": [3.49, "tin"],
+    "croutons": [2.99, "5 oz bag"],
+    "quinoa": [5.99, "1 lb bag"],
+    "couscous": [3.49, "10 oz box"],
+    "bulgur": [3.49, "1 lb bag"]
+  },
+  "recipes": [
+    {
+      "title": "Spaghetti Carbonara",
+      "cuisine": "italian", "protein": "pork", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Silky Roman pasta with crisp bacon, egg, and parmesan.",
+      "tags": ["pasta", "comfort"],
+      "ingredients": [["spaghetti", 1, "lb"], ["bacon", 8, "oz"], ["eggs", 3, "unit"], ["parmesan cheese", 1, "cup"], ["black pepper", 2, "tsp"], ["garlic", 2, "clove"]],
+      "steps": ["Boil spaghetti until al dente; reserve a cup of pasta water.", "Crisp bacon, then toss pasta in the fat off heat.", "Stir in beaten eggs and parmesan with pasta water until silky; finish with black pepper."]
+    },
+    {
+      "title": "Margherita Flatbread",
+      "cuisine": "italian", "protein": "vegetarian", "prep": 10, "cook": 12, "servings": 2, "difficulty": "easy",
+      "desc": "Crisp flatbread with marinara, fresh mozzarella, and basil.",
+      "tags": ["vegetarian", "quick"],
+      "ingredients": [["flatbread", 2, "unit"], ["marinara sauce", 0.75, "cup"], ["mozzarella cheese", 8, "oz"], ["basil", 0.5, "cup"], ["olive oil", 1, "tbsp"]],
+      "steps": ["Spread marinara over flatbreads and top with torn mozzarella.", "Bake at 450°F until bubbling and edges crisp, about 10 minutes.", "Finish with basil and a drizzle of olive oil."]
+    },
+    {
+      "title": "Chicken Parmesan",
+      "cuisine": "italian", "protein": "chicken", "prep": 20, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Breaded chicken cutlets baked under marinara and mozzarella.",
+      "tags": ["comfort", "family"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["panko breadcrumbs", 1.5, "cup"], ["eggs", 2, "unit"], ["flour", 0.5, "cup"], ["marinara sauce", 2, "cup"], ["mozzarella cheese", 8, "oz"], ["parmesan cheese", 0.5, "cup"], ["spaghetti", 0.75, "lb"]],
+      "steps": ["Bread pounded cutlets in flour, egg, then panko; pan-fry until golden.", "Top with marinara and mozzarella; bake until cheese melts.", "Serve over spaghetti with parmesan."]
+    },
+    {
+      "title": "Mushroom Risotto",
+      "cuisine": "italian", "protein": "vegetarian", "prep": 10, "cook": 35, "servings": 4, "difficulty": "medium",
+      "desc": "Creamy arborio rice with sautéed mushrooms and parmesan.",
+      "tags": ["vegetarian", "comfort", "weekend"],
+      "ingredients": [["arborio rice", 1.5, "cup"], ["mushrooms", 8, "oz"], ["shiitake mushrooms", 5, "oz"], ["onion", 1, "unit"], ["garlic", 2, "clove"], ["white wine", 0.5, "cup"], ["vegetable broth", 5, "cup"], ["parmesan cheese", 0.75, "cup"], ["butter", 3, "tbsp"]],
+      "steps": ["Sauté mushrooms in butter and set aside; soften onion and garlic.", "Toast rice, deglaze with wine, then ladle in warm broth gradually, stirring.", "Fold in mushrooms, parmesan, and butter; rest 2 minutes and serve."]
+    },
+    {
+      "title": "Pesto Penne with Chicken",
+      "cuisine": "italian", "protein": "chicken", "prep": 10, "cook": 18, "servings": 4, "difficulty": "easy",
+      "desc": "Penne and seared chicken tossed in basil pesto with cherry tomatoes. Contains pine nuts (pesto).",
+      "tags": ["pasta", "quick"],
+      "ingredients": [["penne pasta", 1, "lb"], ["chicken breast", 1, "lb"], ["pesto", 6, "oz"], ["cherry tomatoes", 1, "pint"], ["parmesan cheese", 0.5, "cup"], ["olive oil", 1, "tbsp"]],
+      "steps": ["Boil penne; sear sliced chicken in olive oil until cooked through.", "Toss pasta, chicken, and halved tomatoes with pesto and a splash of pasta water.", "Top with parmesan."]
+    },
+    {
+      "title": "Sausage and Peppers Rigatoni",
+      "cuisine": "italian", "protein": "pork", "prep": 10, "cook": 25, "servings": 4, "difficulty": "easy",
+      "desc": "Rigatoni with browned Italian sausage, peppers, and tomato sauce.",
+      "tags": ["pasta", "comfort"],
+      "ingredients": [["rigatoni", 1, "lb"], ["italian sausage", 1, "lb"], ["bell peppers", 2, "unit"], ["onion", 1, "unit"], ["canned tomatoes", 28, "oz"], ["garlic", 3, "clove"], ["red pepper flakes", 0.5, "tsp"], ["parmesan cheese", 0.5, "cup"]],
+      "steps": ["Brown crumbled sausage; sauté peppers, onion, and garlic in the fat.", "Add tomatoes and simmer 15 minutes.", "Toss with rigatoni and finish with parmesan."]
+    },
+    {
+      "title": "Caprese Chicken Skillet",
+      "cuisine": "italian", "protein": "chicken", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Seared chicken topped with mozzarella, tomatoes, and basil.",
+      "tags": ["low-carb", "quick"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["mozzarella cheese", 8, "oz"], ["tomatoes", 3, "unit"], ["basil", 0.5, "cup"], ["garlic", 2, "clove"], ["olive oil", 2, "tbsp"]],
+      "steps": ["Sear seasoned chicken breasts until nearly cooked.", "Top with tomato slices and mozzarella; cover until cheese melts.", "Finish with basil."]
+    },
+    {
+      "title": "Beef Lasagna",
+      "cuisine": "italian", "protein": "beef", "prep": 30, "cook": 50, "servings": 8, "difficulty": "hard",
+      "desc": "Layered lasagna with beef ragu, creamy béchamel, and mozzarella.",
+      "tags": ["comfort", "weekend", "family", "leftovers"],
+      "ingredients": [["lasagna noodles", 1, "lb"], ["ground beef", 1.5, "lb"], ["canned tomatoes", 28, "oz"], ["tomato paste", 3, "tbsp"], ["onion", 1, "unit"], ["garlic", 4, "clove"], ["milk", 3, "cup"], ["butter", 4, "tbsp"], ["flour", 0.25, "cup"], ["mozzarella cheese", 16, "oz"], ["parmesan cheese", 1, "cup"]],
+      "steps": ["Simmer a beef ragu with tomatoes, paste, onion, and garlic.", "Make a béchamel from butter, flour, and milk.", "Layer noodles, ragu, béchamel, and cheese; bake at 375°F for 45 minutes."]
+    },
+    {
+      "title": "Tilapia Piccata",
+      "cuisine": "italian", "protein": "fish", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Pan-seared tilapia in a lemon, butter, and caper sauce. Contains fish.",
+      "tags": ["fish", "quick", "light"],
+      "ingredients": [["tilapia fillet", 1.5, "lb"], ["lemon", 2, "unit"], ["capers", 3, "tbsp"], ["butter", 4, "tbsp"], ["flour", 0.5, "cup"], ["white wine", 0.5, "cup"], ["parsley", 0.25, "cup"]],
+      "steps": ["Dredge tilapia in flour and pan-sear in butter until golden.", "Deglaze with wine and lemon juice; stir in capers and remaining butter.", "Spoon sauce over fish and finish with parsley."]
+    },
+    {
+      "title": "Chicken Street Tacos",
+      "cuisine": "mexican", "protein": "chicken", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Charred chicken thighs in corn tortillas with onion, cilantro, and lime.",
+      "tags": ["quick", "family"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["corn tortillas", 12, "unit"], ["onion", 1, "unit"], ["cilantro", 1, "bunch"], ["lime", 3, "unit"], ["chili powder", 1, "tbsp"], ["cumin", 1, "tsp"], ["salsa", 1, "cup"]],
+      "steps": ["Season chicken with chili powder and cumin; sear until charred and cooked.", "Chop and pile into warmed tortillas.", "Top with onion, cilantro, salsa, and lime."]
+    },
+    {
+      "title": "Beef Burrito Bowls",
+      "cuisine": "mexican", "protein": "beef", "prep": 15, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Seasoned ground beef over rice with beans, salsa, and avocado.",
+      "tags": ["bowl", "meal-prep"],
+      "ingredients": [["ground beef", 1, "lb"], ["white rice", 1.5, "cup"], ["black beans", 15, "oz"], ["salsa", 1, "cup"], ["avocado", 2, "unit"], ["cheddar cheese", 4, "oz"], ["romaine lettuce", 1, "head"], ["lime", 2, "unit"], ["chili powder", 1, "tbsp"]],
+      "steps": ["Cook rice; brown beef with chili powder.", "Warm beans; chop lettuce and avocado.", "Assemble bowls and top with cheese, salsa, and lime."]
+    },
+    {
+      "title": "Veggie Quesadillas",
+      "cuisine": "mexican", "protein": "vegetarian", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Crispy tortillas stuffed with peppers, beans, corn, and melty cheese.",
+      "tags": ["vegetarian", "quick", "family"],
+      "ingredients": [["tortillas", 8, "unit"], ["bell peppers", 2, "unit"], ["black beans", 15, "oz"], ["corn", 1, "cup"], ["monterey jack cheese", 8, "oz"], ["onion", 1, "unit"], ["sour cream", 0.5, "cup"], ["salsa", 1, "cup"]],
+      "steps": ["Sauté peppers and onion; stir in beans and corn.", "Fill tortillas with veggies and cheese; toast until crisp and melted.", "Serve with sour cream and salsa."]
+    },
+    {
+      "title": "Slow Carnitas",
+      "cuisine": "mexican", "protein": "pork", "prep": 15, "cook": 180, "servings": 6, "difficulty": "medium",
+      "desc": "Citrusy braised pork shoulder, crisped and served with tortillas.",
+      "tags": ["weekend", "leftovers", "family"],
+      "ingredients": [["pork shoulder", 2, "lb"], ["orange juice", 1, "cup"], ["lime", 2, "unit"], ["onion", 1, "unit"], ["garlic", 5, "clove"], ["cumin", 1, "tbsp"], ["oregano", 1, "tbsp"], ["bay leaves", 2, "unit"], ["corn tortillas", 12, "unit"], ["cilantro", 1, "bunch"]],
+      "steps": ["Braise pork with juices, onion, garlic, and spices until shreddable, about 3 hours.", "Shred and crisp under the broiler.", "Serve in tortillas with cilantro and lime."]
+    },
+    {
+      "title": "Shrimp Fajitas",
+      "cuisine": "mexican", "protein": "shrimp", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Sizzling shrimp with charred peppers and onions. Contains shellfish.",
+      "tags": ["shellfish", "quick"],
+      "ingredients": [["shrimp", 1, "lb"], ["bell peppers", 3, "unit"], ["onion", 1, "unit"], ["tortillas", 8, "unit"], ["lime", 2, "unit"], ["chili powder", 1, "tbsp"], ["smoked paprika", 1, "tsp"], ["sour cream", 0.5, "cup"], ["vegetable oil", 2, "tbsp"]],
+      "steps": ["Toss shrimp with spices; char peppers and onion in a hot skillet.", "Add shrimp and cook 3 minutes until pink.", "Serve sizzling with warm tortillas, lime, and sour cream."]
+    },
+    {
+      "title": "Black Bean Enchiladas",
+      "cuisine": "mexican", "protein": "vegetarian", "prep": 20, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Rolled tortillas with black beans and cheese under red enchilada sauce.",
+      "tags": ["vegetarian", "comfort"],
+      "ingredients": [["corn tortillas", 12, "unit"], ["black beans", 30, "oz"], ["enchilada sauce", 30, "oz"], ["monterey jack cheese", 8, "oz"], ["onion", 1, "unit"], ["cumin", 1, "tsp"], ["cilantro", 1, "bunch"], ["sour cream", 0.5, "cup"]],
+      "steps": ["Mash half the beans with sautéed onion and cumin; fill and roll tortillas.", "Cover with enchilada sauce and cheese.", "Bake at 375°F for 20 minutes; top with cilantro and sour cream."]
+    },
+    {
+      "title": "Chilaquiles Verdes",
+      "cuisine": "mexican", "protein": "vegetarian", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Tortilla chips simmered in salsa, topped with fried eggs and crema.",
+      "tags": ["vegetarian", "brunch", "quick"],
+      "ingredients": [["tortilla chips", 11, "oz"], ["salsa", 2, "cup"], ["eggs", 4, "unit"], ["sour cream", 0.5, "cup"], ["feta cheese", 3, "oz"], ["onion", 0.5, "unit"], ["cilantro", 1, "bunch"]],
+      "steps": ["Warm salsa in a wide skillet; fold in chips to coat.", "Fry eggs sunny-side up.", "Top chips with eggs, crema, crumbled cheese, onion, and cilantro."]
+    },
+    {
+      "title": "Pork Al Pastor Bowls",
+      "cuisine": "mexican", "protein": "pork", "prep": 20, "cook": 20, "servings": 4, "difficulty": "medium",
+      "desc": "Chili-marinated pork with charred pineapple over rice.",
+      "tags": ["bowl", "meal-prep"],
+      "ingredients": [["pork tenderloin", 1.5, "lb"], ["pineapple", 0.5, "unit"], ["white rice", 1.5, "cup"], ["chili powder", 2, "tbsp"], ["garlic", 3, "clove"], ["lime", 2, "unit"], ["onion", 1, "unit"], ["cilantro", 1, "bunch"]],
+      "steps": ["Marinate sliced pork in chili powder, garlic, and lime.", "Sear pork and pineapple until charred.", "Serve over rice with onion and cilantro."]
+    },
+    {
+      "title": "Chicken Fried Rice",
+      "cuisine": "chinese", "protein": "chicken", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Wok-fried rice with chicken, egg, peas, and scallions — best with day-old rice.",
+      "tags": ["quick", "pantry-friendly", "leftovers"],
+      "ingredients": [["chicken thighs", 1, "lb"], ["white rice", 2, "cup"], ["eggs", 3, "unit"], ["frozen peas", 1, "cup"], ["carrots", 2, "unit"], ["scallions", 1, "bunch"], ["soy sauce", 3, "tbsp"], ["sesame oil", 1, "tbsp"], ["garlic", 3, "clove"]],
+      "steps": ["Stir-fry diced chicken; scramble eggs and set aside.", "Fry cold rice with garlic, peas, and carrots over high heat.", "Toss everything with soy sauce and sesame oil; finish with scallions."]
+    },
+    {
+      "title": "Beef and Broccoli",
+      "cuisine": "chinese", "protein": "beef", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Velveted beef and crisp broccoli in a glossy oyster sauce.",
+      "tags": ["quick", "takeout-style"],
+      "ingredients": [["beef sirloin", 1, "lb"], ["broccoli", 1, "head"], ["oyster sauce", 3, "tbsp"], ["soy sauce", 2, "tbsp"], ["cornstarch", 2, "tbsp"], ["garlic", 3, "clove"], ["ginger", 1, "tbsp"], ["white rice", 1.5, "cup"]],
+      "steps": ["Toss sliced beef with cornstarch and soy; blanch broccoli.", "Sear beef hard, then stir-fry with garlic and ginger.", "Add broccoli and oyster sauce; serve over rice."]
+    },
+    {
+      "title": "Kung Pao Chicken",
+      "cuisine": "chinese", "protein": "chicken", "prep": 15, "cook": 12, "servings": 4, "difficulty": "medium",
+      "desc": "Spicy stir-fried chicken with peanuts and chilies. Contains peanuts.",
+      "tags": ["spicy", "peanuts", "takeout-style"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["peanuts", 0.75, "cup"], ["bell peppers", 1, "unit"], ["scallions", 1, "bunch"], ["soy sauce", 3, "tbsp"], ["rice vinegar", 2, "tbsp"], ["sugar", 1, "tbsp"], ["red pepper flakes", 1, "tsp"], ["garlic", 3, "clove"], ["white rice", 1.5, "cup"]],
+      "steps": ["Stir-fry diced chicken until golden.", "Add garlic, peppers, chilies, and peanuts.", "Toss with the soy-vinegar sauce until glossy; serve over rice."]
+    },
+    {
+      "title": "Mapo Tofu",
+      "cuisine": "chinese", "protein": "tofu", "prep": 10, "cook": 15, "servings": 4, "difficulty": "medium",
+      "desc": "Silky tofu and ground pork in a numbing-spicy sauce.",
+      "tags": ["spicy", "quick"],
+      "ingredients": [["tofu", 14, "oz"], ["ground pork", 0.5, "lb"], ["soy sauce", 2, "tbsp"], ["garlic", 3, "clove"], ["ginger", 1, "tbsp"], ["scallions", 1, "bunch"], ["red pepper flakes", 1, "tsp"], ["cornstarch", 1, "tbsp"], ["white rice", 1.5, "cup"]],
+      "steps": ["Brown pork with garlic, ginger, and chili.", "Add cubed tofu and a soy-based sauce; simmer gently.", "Thicken with cornstarch slurry; serve over rice with scallions."]
+    },
+    {
+      "title": "Sweet and Sour Pork",
+      "cuisine": "chinese", "protein": "pork", "prep": 20, "cook": 15, "servings": 4, "difficulty": "medium",
+      "desc": "Crispy pork with pineapple and peppers in a tangy glaze.",
+      "tags": ["takeout-style", "family"],
+      "ingredients": [["pork tenderloin", 1, "lb"], ["pineapple", 0.5, "unit"], ["bell peppers", 2, "unit"], ["cornstarch", 0.5, "cup"], ["ketchup", 0.33, "cup"], ["rice vinegar", 3, "tbsp"], ["sugar", 3, "tbsp"], ["soy sauce", 1, "tbsp"], ["white rice", 1.5, "cup"]],
+      "steps": ["Coat pork cubes in cornstarch and fry until crisp.", "Make the glaze from ketchup, vinegar, sugar, and soy.", "Toss pork, pineapple, and peppers in the glaze; serve over rice."]
+    },
+    {
+      "title": "Garlic Green Beans with Pork",
+      "cuisine": "chinese", "protein": "pork", "prep": 10, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Blistered green beans stir-fried with ground pork and garlic.",
+      "tags": ["quick", "low-carb"],
+      "ingredients": [["green beans", 1, "lb"], ["ground pork", 0.75, "lb"], ["garlic", 5, "clove"], ["soy sauce", 2, "tbsp"], ["sesame oil", 1, "tbsp"], ["sugar", 1, "tsp"], ["white rice", 1.5, "cup"]],
+      "steps": ["Blister green beans in a hot wok; set aside.", "Brown pork with garlic; return beans.", "Season with soy, sugar, and sesame oil; serve over rice."]
+    },
+    {
+      "title": "Sesame Peanut Noodles",
+      "cuisine": "chinese", "protein": "vegetarian", "prep": 10, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Chilled noodles in a creamy sesame-peanut sauce. Contains peanuts.",
+      "tags": ["vegetarian", "peanuts", "quick", "cold"],
+      "ingredients": [["egg noodles", 12, "oz"], ["peanut butter", 0.33, "cup"], ["soy sauce", 3, "tbsp"], ["sesame oil", 2, "tbsp"], ["rice vinegar", 2, "tbsp"], ["garlic", 2, "clove"], ["cucumber", 1, "unit"], ["scallions", 1, "bunch"], ["sesame seeds", 1, "tbsp"]],
+      "steps": ["Boil noodles, rinse cold.", "Whisk peanut butter, soy, vinegar, sesame oil, and garlic into a sauce.", "Toss noodles with sauce; top with cucumber, scallions, and sesame."]
+    },
+    {
+      "title": "Vegetable Lo Mein",
+      "cuisine": "chinese", "protein": "vegetarian", "prep": 15, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Tossed noodles with cabbage, carrots, mushrooms, and scallions.",
+      "tags": ["vegetarian", "quick", "takeout-style"],
+      "ingredients": [["egg noodles", 12, "oz"], ["cabbage", 0.5, "head"], ["carrots", 2, "unit"], ["mushrooms", 8, "oz"], ["scallions", 1, "bunch"], ["soy sauce", 3, "tbsp"], ["oyster sauce", 2, "tbsp"], ["sesame oil", 1, "tbsp"], ["garlic", 3, "clove"]],
+      "steps": ["Boil noodles; stir-fry vegetables over high heat.", "Add noodles with soy, oyster sauce, and sesame oil.", "Toss until glossy; finish with scallions."]
+    },
+    {
+      "title": "Teriyaki Salmon",
+      "cuisine": "japanese", "protein": "fish", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Glazed salmon with steamed rice and broccoli. Contains fish.",
+      "tags": ["fish", "quick", "healthy"],
+      "ingredients": [["salmon fillet", 1.5, "lb"], ["soy sauce", 0.33, "cup"], ["mirin", 3, "tbsp"], ["sugar", 2, "tbsp"], ["ginger", 1, "tbsp"], ["white rice", 1.5, "cup"], ["broccoli", 1, "head"], ["sesame seeds", 1, "tbsp"]],
+      "steps": ["Simmer soy, mirin, sugar, and ginger into a glaze.", "Sear salmon, then lacquer with the glaze.", "Serve over rice with steamed broccoli and sesame."]
+    },
+    {
+      "title": "Chicken Katsu Curry",
+      "cuisine": "japanese", "protein": "chicken", "prep": 20, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Crispy panko chicken over rice with Japanese curry sauce.",
+      "tags": ["comfort", "family"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["panko breadcrumbs", 2, "cup"], ["eggs", 2, "unit"], ["flour", 0.5, "cup"], ["curry powder", 2, "tbsp"], ["onion", 1, "unit"], ["carrots", 2, "unit"], ["potatoes", 2, "unit"], ["chicken broth", 2, "cup"], ["white rice", 1.5, "cup"], ["vegetable oil", 1, "cup"]],
+      "steps": ["Simmer onion, carrot, and potato with broth and curry powder; thicken.", "Bread cutlets and shallow-fry until golden.", "Slice katsu over rice and ladle curry alongside."]
+    },
+    {
+      "title": "Oyakodon",
+      "cuisine": "japanese", "protein": "chicken", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Chicken and softly set egg simmered in sweet dashi over rice.",
+      "tags": ["quick", "comfort", "one-pan"],
+      "ingredients": [["chicken thighs", 1, "lb"], ["eggs", 6, "unit"], ["onion", 1, "unit"], ["dashi stock", 1.5, "cup"], ["soy sauce", 3, "tbsp"], ["mirin", 3, "tbsp"], ["white rice", 1.5, "cup"], ["scallions", 1, "bunch"]],
+      "steps": ["Simmer chicken and onion in seasoned dashi.", "Pour beaten egg over and cook until just set.", "Slide over rice bowls and top with scallions."]
+    },
+    {
+      "title": "Yaki Udon",
+      "cuisine": "japanese", "protein": "pork", "prep": 10, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Chewy stir-fried udon with pork, cabbage, and a savory sauce.",
+      "tags": ["quick", "noodles"],
+      "ingredients": [["udon noodles", 14, "oz"], ["ground pork", 0.75, "lb"], ["cabbage", 0.5, "head"], ["carrots", 1, "unit"], ["scallions", 1, "bunch"], ["soy sauce", 2, "tbsp"], ["oyster sauce", 2, "tbsp"], ["sesame oil", 1, "tbsp"]],
+      "steps": ["Brown pork; stir-fry cabbage and carrot.", "Add cooked udon and the sauces.", "Toss over high heat; finish with scallions."]
+    },
+    {
+      "title": "Miso Glazed Cod",
+      "cuisine": "japanese", "protein": "fish", "prep": 10, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Broiled cod with a sweet miso glaze, rice, and bok choy. Contains fish.",
+      "tags": ["fish", "healthy", "quick"],
+      "ingredients": [["cod fillet", 1.5, "lb"], ["miso paste", 3, "tbsp"], ["mirin", 2, "tbsp"], ["sugar", 1, "tbsp"], ["bok choy", 1, "lb"], ["white rice", 1.5, "cup"], ["sesame oil", 1, "tbsp"]],
+      "steps": ["Whisk miso, mirin, and sugar; coat cod.", "Broil until caramelized and flaky, about 8 minutes.", "Serve with rice and sesame-sautéed bok choy."]
+    },
+    {
+      "title": "Gyudon Beef Bowls",
+      "cuisine": "japanese", "protein": "beef", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Thin-sliced beef and onions simmered sweet-savory over rice.",
+      "tags": ["bowl", "quick", "comfort"],
+      "ingredients": [["beef sirloin", 1, "lb"], ["onion", 2, "unit"], ["soy sauce", 0.25, "cup"], ["mirin", 0.25, "cup"], ["sugar", 1, "tbsp"], ["ginger", 1, "tbsp"], ["white rice", 1.5, "cup"], ["scallions", 1, "bunch"], ["eggs", 4, "unit"]],
+      "steps": ["Simmer onions in soy, mirin, sugar, and ginger.", "Add shaved beef and cook just through.", "Serve over rice, topped with a soft egg and scallions."]
+    },
+    {
+      "title": "Shrimp Pad Thai",
+      "cuisine": "thai", "protein": "shrimp", "prep": 20, "cook": 12, "servings": 4, "difficulty": "medium",
+      "desc": "Classic rice noodles with shrimp, egg, and crushed peanuts. Contains shellfish and peanuts.",
+      "tags": ["shellfish", "peanuts", "takeout-style"],
+      "ingredients": [["rice noodles", 8, "oz"], ["shrimp", 1, "lb"], ["eggs", 2, "unit"], ["fish sauce", 3, "tbsp"], ["brown sugar", 2, "tbsp"], ["lime", 2, "unit"], ["peanuts", 0.5, "cup"], ["scallions", 1, "bunch"], ["garlic", 3, "clove"]],
+      "steps": ["Soak noodles; mix fish sauce, sugar, and lime into a sauce.", "Stir-fry shrimp and garlic; scramble in eggs.", "Add noodles and sauce; toss and top with peanuts and scallions."]
+    },
+    {
+      "title": "Green Curry Chicken",
+      "cuisine": "thai", "protein": "chicken", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Fragrant coconut green curry with chicken and vegetables.",
+      "tags": ["spicy", "curry"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["curry paste", 3, "tbsp"], ["coconut milk", 27, "oz"], ["green beans", 0.5, "lb"], ["bell peppers", 1, "unit"], ["thai basil", 1, "cup"], ["fish sauce", 1, "tbsp"], ["jasmine rice", 1.5, "cup"]],
+      "steps": ["Fry curry paste in thick coconut cream.", "Add chicken, remaining coconut milk, and vegetables; simmer 15 minutes.", "Season with fish sauce; serve over jasmine rice with thai basil."]
+    },
+    {
+      "title": "Pad Krapow Beef",
+      "cuisine": "thai", "protein": "beef", "prep": 10, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Fiery basil beef stir-fry topped with a crispy fried egg.",
+      "tags": ["spicy", "quick"],
+      "ingredients": [["ground beef", 1, "lb"], ["thai basil", 1.5, "cup"], ["garlic", 4, "clove"], ["jalapeno", 2, "unit"], ["fish sauce", 2, "tbsp"], ["soy sauce", 1, "tbsp"], ["sugar", 1, "tsp"], ["eggs", 4, "unit"], ["jasmine rice", 1.5, "cup"]],
+      "steps": ["Stir-fry garlic and chilies, then brown the beef hard.", "Season with fish sauce, soy, and sugar; wilt in basil.", "Serve over rice with crispy fried eggs."]
+    },
+    {
+      "title": "Massaman Curry",
+      "cuisine": "thai", "protein": "beef", "prep": 15, "cook": 90, "servings": 6, "difficulty": "medium",
+      "desc": "Rich braised beef curry with potatoes and peanuts. Contains peanuts.",
+      "tags": ["peanuts", "weekend", "curry", "leftovers"],
+      "ingredients": [["beef chuck", 2, "lb"], ["curry paste", 4, "tbsp"], ["coconut milk", 27, "oz"], ["potatoes", 3, "unit"], ["onion", 1, "unit"], ["peanuts", 0.5, "cup"], ["fish sauce", 2, "tbsp"], ["brown sugar", 2, "tbsp"], ["cinnamon", 1, "unit"], ["jasmine rice", 1.5, "cup"]],
+      "steps": ["Fry curry paste in coconut cream; brown beef chunks.", "Add coconut milk, potatoes, onion, and seasonings; braise 80 minutes.", "Stir in peanuts; serve over jasmine rice."]
+    },
+    {
+      "title": "Tom Kha Shrimp Soup",
+      "cuisine": "thai", "protein": "shrimp", "prep": 15, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Coconut-lemongrass soup with shrimp and mushrooms. Contains shellfish.",
+      "tags": ["shellfish", "soup", "light"],
+      "ingredients": [["shrimp", 1, "lb"], ["coconut milk", 27, "oz"], ["chicken broth", 2, "cup"], ["lemongrass", 2, "stalk"], ["ginger", 2, "tbsp"], ["mushrooms", 8, "oz"], ["lime", 2, "unit"], ["fish sauce", 2, "tbsp"], ["cilantro", 1, "bunch"]],
+      "steps": ["Simmer coconut milk and broth with bruised lemongrass and ginger.", "Add mushrooms, then shrimp until just pink.", "Finish with lime, fish sauce, and cilantro."]
+    },
+    {
+      "title": "Pineapple Fried Rice",
+      "cuisine": "thai", "protein": "vegetarian", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Sweet-savory fried rice with pineapple, cashews, and egg. Contains tree nuts.",
+      "tags": ["vegetarian", "tree-nuts", "quick"],
+      "ingredients": [["jasmine rice", 2, "cup"], ["pineapple", 0.5, "unit"], ["cashews", 0.5, "cup"], ["eggs", 3, "unit"], ["frozen peas", 1, "cup"], ["soy sauce", 2, "tbsp"], ["curry powder", 1, "tsp"], ["scallions", 1, "bunch"]],
+      "steps": ["Scramble eggs and set aside; fry cold rice with curry powder.", "Add pineapple, peas, and cashews.", "Toss with soy and eggs; finish with scallions."]
+    },
+    {
+      "title": "Butter Chicken",
+      "cuisine": "indian", "protein": "chicken", "prep": 20, "cook": 30, "servings": 4, "difficulty": "medium",
+      "desc": "Tandoori-spiced chicken in a creamy tomato sauce.",
+      "tags": ["curry", "comfort", "family"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["greek yogurt", 0.5, "cup"], ["canned tomatoes", 28, "oz"], ["heavy cream", 0.5, "cup"], ["butter", 4, "tbsp"], ["garam masala", 2, "tbsp"], ["turmeric", 1, "tsp"], ["garlic", 4, "clove"], ["ginger", 2, "tbsp"], ["basmati rice", 1.5, "cup"]],
+      "steps": ["Marinate chicken in yogurt and spices; broil until charred.", "Simmer tomatoes with butter, garlic, and ginger; blend smooth.", "Add chicken and cream; simmer and serve over basmati."]
+    },
+    {
+      "title": "Chana Masala",
+      "cuisine": "indian", "protein": "vegetarian", "prep": 10, "cook": 25, "servings": 4, "difficulty": "easy",
+      "desc": "Spiced chickpea stew in a tangy tomato-onion gravy. Vegan.",
+      "tags": ["vegan", "pantry-friendly", "curry"],
+      "ingredients": [["chickpeas", 30, "oz"], ["canned tomatoes", 28, "oz"], ["onion", 2, "unit"], ["garlic", 4, "clove"], ["ginger", 2, "tbsp"], ["garam masala", 1, "tbsp"], ["cumin", 2, "tsp"], ["turmeric", 1, "tsp"], ["basmati rice", 1.5, "cup"], ["cilantro", 1, "bunch"]],
+      "steps": ["Brown onions deeply; add garlic, ginger, and spices.", "Add tomatoes and chickpeas; simmer 20 minutes.", "Serve over basmati with cilantro."]
+    },
+    {
+      "title": "Palak Paneer",
+      "cuisine": "indian", "protein": "vegetarian", "prep": 15, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Paneer cubes in a silky spiced spinach purée.",
+      "tags": ["vegetarian", "curry"],
+      "ingredients": [["paneer", 8, "oz"], ["spinach", 20, "oz"], ["onion", 1, "unit"], ["garlic", 3, "clove"], ["ginger", 2, "tbsp"], ["heavy cream", 0.33, "cup"], ["garam masala", 1, "tbsp"], ["cumin", 1, "tsp"], ["basmati rice", 1.5, "cup"]],
+      "steps": ["Blanch spinach and blend to a purée.", "Sauté onion, garlic, ginger, and spices; add purée and cream.", "Fold in seared paneer; serve with basmati."]
+    },
+    {
+      "title": "Chicken Tikka Masala",
+      "cuisine": "indian", "protein": "chicken", "prep": 25, "cook": 30, "servings": 4, "difficulty": "medium",
+      "desc": "Charred yogurt-marinated chicken in spiced tomato-cream sauce.",
+      "tags": ["curry", "family", "leftovers"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["greek yogurt", 0.75, "cup"], ["canned tomatoes", 28, "oz"], ["heavy cream", 0.75, "cup"], ["onion", 1, "unit"], ["garlic", 4, "clove"], ["ginger", 2, "tbsp"], ["garam masala", 2, "tbsp"], ["smoked paprika", 1, "tbsp"], ["basmati rice", 1.5, "cup"]],
+      "steps": ["Marinate chicken in yogurt and spices; broil until charred.", "Simmer the onion-tomato sauce and blend; add cream.", "Combine with chicken; serve over basmati."]
+    },
+    {
+      "title": "Dal Tadka",
+      "cuisine": "indian", "protein": "vegetarian", "prep": 10, "cook": 30, "servings": 4, "difficulty": "easy",
+      "desc": "Comforting red lentils finished with sizzled garlic-spice butter. Vegan if oil used.",
+      "tags": ["vegan-option", "pantry-friendly", "budget"],
+      "ingredients": [["red lentils", 1.5, "cup"], ["onion", 1, "unit"], ["tomatoes", 2, "unit"], ["garlic", 4, "clove"], ["turmeric", 1, "tsp"], ["cumin", 2, "tsp"], ["butter", 3, "tbsp"], ["basmati rice", 1.5, "cup"], ["cilantro", 1, "bunch"]],
+      "steps": ["Simmer lentils with turmeric until soft.", "Sauté onion and tomato; stir into the dal.", "Sizzle garlic and cumin in butter; pour over and serve with rice."]
+    },
+    {
+      "title": "Aloo Gobi",
+      "cuisine": "indian", "protein": "vegetarian", "prep": 15, "cook": 25, "servings": 4, "difficulty": "easy",
+      "desc": "Dry-spiced potatoes and cauliflower with ginger and cilantro. Vegan.",
+      "tags": ["vegan", "budget"],
+      "ingredients": [["potatoes", 3, "unit"], ["cauliflower", 1, "head"], ["onion", 1, "unit"], ["ginger", 2, "tbsp"], ["turmeric", 1, "tsp"], ["cumin", 2, "tsp"], ["garam masala", 1, "tsp"], ["tomatoes", 2, "unit"], ["cilantro", 1, "bunch"], ["vegetable oil", 3, "tbsp"]],
+      "steps": ["Fry cumin, onion, and ginger; add spices.", "Add potatoes, cauliflower, and tomato; cover and steam-fry until tender.", "Finish with cilantro."]
+    },
+    {
+      "title": "Lamb Rogan Josh",
+      "cuisine": "indian", "protein": "lamb", "prep": 20, "cook": 100, "servings": 6, "difficulty": "hard",
+      "desc": "Slow-braised lamb in a deeply spiced yogurt-tomato gravy.",
+      "tags": ["weekend", "curry", "leftovers"],
+      "ingredients": [["lamb shoulder", 2, "lb"], ["greek yogurt", 0.75, "cup"], ["onion", 2, "unit"], ["garlic", 5, "clove"], ["ginger", 2, "tbsp"], ["garam masala", 2, "tbsp"], ["smoked paprika", 2, "tbsp"], ["canned tomatoes", 14, "oz"], ["basmati rice", 1.5, "cup"], ["cilantro", 1, "bunch"]],
+      "steps": ["Brown lamb; soften onions with garlic, ginger, and spices.", "Add tomatoes and yogurt; braise low for 90 minutes.", "Rest, skim, and serve over basmati with cilantro."]
+    },
+    {
+      "title": "Vegetable Korma",
+      "cuisine": "indian", "protein": "vegetarian", "prep": 15, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Mixed vegetables in a creamy cashew-coconut sauce. Contains tree nuts.",
+      "tags": ["vegetarian", "tree-nuts", "curry"],
+      "ingredients": [["cauliflower", 0.5, "head"], ["carrots", 2, "unit"], ["frozen peas", 1, "cup"], ["potatoes", 2, "unit"], ["cashews", 0.75, "cup"], ["coconut milk", 13.5, "oz"], ["onion", 1, "unit"], ["garam masala", 1, "tbsp"], ["turmeric", 1, "tsp"], ["basmati rice", 1.5, "cup"]],
+      "steps": ["Blend soaked cashews with coconut milk into a cream.", "Sauté onion and spices; add vegetables and the cashew cream.", "Simmer until tender; serve with basmati."]
+    },
+    {
+      "title": "Classic Cheeseburgers",
+      "cuisine": "american", "protein": "beef", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Smash-style burgers with cheddar, lettuce, and special sauce.",
+      "tags": ["family", "quick", "grill"],
+      "ingredients": [["ground beef", 1.5, "lb"], ["burger buns", 4, "unit"], ["cheddar cheese", 4, "oz"], ["romaine lettuce", 0.5, "head"], ["tomatoes", 2, "unit"], ["red onion", 1, "unit"], ["mayonnaise", 3, "tbsp"], ["ketchup", 2, "tbsp"], ["dijon mustard", 1, "tbsp"]],
+      "steps": ["Mix mayo, ketchup, and mustard into a sauce; toast buns.", "Smash beef patties in a ripping-hot skillet; top with cheddar.", "Stack with lettuce, tomato, and onion."]
+    },
+    {
+      "title": "BBQ Pulled Pork Sandwiches",
+      "cuisine": "american", "protein": "pork", "prep": 15, "cook": 240, "servings": 6, "difficulty": "medium",
+      "desc": "Slow-cooked pork shoulder in barbecue sauce with slaw on buns.",
+      "tags": ["weekend", "leftovers", "family"],
+      "ingredients": [["pork shoulder", 2, "lb"], ["bbq sauce", 18, "oz"], ["burger buns", 6, "unit"], ["cabbage", 0.5, "head"], ["carrots", 2, "unit"], ["mayonnaise", 0.33, "cup"], ["brown sugar", 2, "tbsp"], ["smoked paprika", 1, "tbsp"]],
+      "steps": ["Rub pork with paprika and sugar; slow-cook until shreddable, about 4 hours.", "Shred and toss with bbq sauce.", "Pile onto buns with quick cabbage-carrot slaw."]
+    },
+    {
+      "title": "Roast Chicken and Potatoes",
+      "cuisine": "american", "protein": "chicken", "prep": 15, "cook": 75, "servings": 4, "difficulty": "medium",
+      "desc": "Whole roasted chicken over crispy herb potatoes.",
+      "tags": ["weekend", "family", "leftovers"],
+      "ingredients": [["whole chicken", 1, "unit"], ["potatoes", 4, "unit"], ["lemon", 1, "unit"], ["garlic", 1, "head"], ["rosemary", 2, "sprig"], ["thyme", 2, "sprig"], ["butter", 4, "tbsp"], ["carrots", 3, "unit"]],
+      "steps": ["Rub chicken with butter and herbs; stuff with lemon and garlic.", "Roast at 425°F over potatoes and carrots.", "Rest 10 minutes before carving."]
+    },
+    {
+      "title": "Baked Mac and Cheese",
+      "cuisine": "american", "protein": "vegetarian", "prep": 15, "cook": 30, "servings": 6, "difficulty": "easy",
+      "desc": "Three-cheese baked macaroni with a crispy panko top.",
+      "tags": ["vegetarian", "comfort", "family"],
+      "ingredients": [["penne pasta", 1, "lb"], ["cheddar cheese", 12, "oz"], ["gruyere cheese", 6, "oz"], ["milk", 3, "cup"], ["butter", 4, "tbsp"], ["flour", 0.25, "cup"], ["panko breadcrumbs", 1, "cup"], ["dijon mustard", 1, "tsp"]],
+      "steps": ["Make a cheese sauce from butter, flour, milk, and the cheeses.", "Fold in cooked pasta; top with buttered panko.", "Bake at 375°F until bubbling and golden."]
+    },
+    {
+      "title": "Cobb Salad",
+      "cuisine": "american", "protein": "chicken", "prep": 20, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Loaded salad with chicken, bacon, egg, avocado, and blue-style dressing.",
+      "tags": ["salad", "low-carb", "quick"],
+      "ingredients": [["chicken breast", 1, "lb"], ["bacon", 6, "oz"], ["eggs", 4, "unit"], ["avocado", 2, "unit"], ["romaine lettuce", 2, "head"], ["cherry tomatoes", 1, "pint"], ["feta cheese", 3, "oz"], ["olive oil", 3, "tbsp"], ["dijon mustard", 1, "tbsp"], ["lemon", 1, "unit"]],
+      "steps": ["Sear chicken; crisp bacon; soft-boil eggs.", "Whisk a lemon-dijon vinaigrette.", "Arrange everything over romaine and dress."]
+    },
+    {
+      "title": "Chili con Carne",
+      "cuisine": "american", "protein": "beef", "prep": 15, "cook": 60, "servings": 6, "difficulty": "easy",
+      "desc": "Hearty beef and bean chili — better the next day.",
+      "tags": ["comfort", "leftovers", "meal-prep", "budget"],
+      "ingredients": [["ground beef", 1.5, "lb"], ["kidney beans", 30, "oz"], ["canned tomatoes", 28, "oz"], ["onion", 1, "unit"], ["garlic", 4, "clove"], ["chili powder", 3, "tbsp"], ["cumin", 1, "tbsp"], ["beef broth", 2, "cup"], ["cheddar cheese", 4, "oz"], ["sour cream", 0.5, "cup"]],
+      "steps": ["Brown beef with onion and garlic; bloom the spices.", "Add tomatoes, beans, and broth; simmer 45 minutes.", "Serve with cheddar and sour cream."]
+    },
+    {
+      "title": "Glazed Meatloaf",
+      "cuisine": "american", "protein": "beef", "prep": 20, "cook": 60, "servings": 6, "difficulty": "easy",
+      "desc": "Classic meatloaf with a tangy ketchup glaze and mashed potatoes.",
+      "tags": ["comfort", "family", "leftovers"],
+      "ingredients": [["ground beef", 2, "lb"], ["eggs", 2, "unit"], ["panko breadcrumbs", 1, "cup"], ["onion", 1, "unit"], ["ketchup", 0.5, "cup"], ["brown sugar", 2, "tbsp"], ["dijon mustard", 1, "tbsp"], ["potatoes", 4, "unit"], ["butter", 4, "tbsp"], ["milk", 0.5, "cup"]],
+      "steps": ["Mix beef, egg, panko, and onion; shape into a loaf.", "Glaze with ketchup, sugar, and mustard; bake at 375°F for an hour.", "Serve with buttery mashed potatoes."]
+    },
+    {
+      "title": "Buffalo Chicken Wraps",
+      "cuisine": "american", "protein": "chicken", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Crispy buffalo-tossed chicken with ranch-style slaw in wraps.",
+      "tags": ["quick", "spicy"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["buffalo sauce", 0.5, "cup"], ["tortilla wraps", 4, "unit"], ["romaine lettuce", 1, "head"], ["carrots", 2, "unit"], ["celery", 2, "stalk"], ["greek yogurt", 0.5, "cup"], ["mayonnaise", 2, "tbsp"]],
+      "steps": ["Sear chicken strips and toss in buffalo sauce.", "Mix yogurt-mayo dressing with shredded lettuce, carrot, and celery.", "Roll everything into warm wraps."]
+    },
+    {
+      "title": "Grilled Cheese and Tomato Soup",
+      "cuisine": "american", "protein": "vegetarian", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Buttery grilled cheese with quick creamy tomato soup.",
+      "tags": ["vegetarian", "comfort", "quick", "budget"],
+      "ingredients": [["sandwich bread", 8, "slice"], ["cheddar cheese", 8, "oz"], ["butter", 4, "tbsp"], ["canned tomatoes", 28, "oz"], ["onion", 1, "unit"], ["garlic", 2, "clove"], ["heavy cream", 0.33, "cup"], ["vegetable broth", 1, "cup"], ["basil", 0.25, "cup"]],
+      "steps": ["Simmer tomatoes with onion, garlic, and broth; blend with cream.", "Griddle buttered cheese sandwiches until molten.", "Serve together with torn basil."]
+    },
+    {
+      "title": "Steak with Mashed Potatoes",
+      "cuisine": "american", "protein": "beef", "prep": 10, "cook": 25, "servings": 4, "difficulty": "medium",
+      "desc": "Pan-seared sirloin with garlic butter and creamy mash.",
+      "tags": ["date-night", "weekend", "low-carb-option"],
+      "ingredients": [["beef sirloin", 1.5, "lb"], ["potatoes", 4, "unit"], ["butter", 6, "tbsp"], ["garlic", 4, "clove"], ["rosemary", 2, "sprig"], ["milk", 0.5, "cup"], ["green beans", 1, "lb"]],
+      "steps": ["Boil and mash potatoes with butter and milk.", "Sear steaks hard; baste with garlic-rosemary butter and rest.", "Serve with blistered green beans."]
+    },
+    {
+      "title": "Greek Chicken Bowls",
+      "cuisine": "greek", "protein": "chicken", "prep": 15, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Lemon-oregano chicken over rice with cucumber, feta, and olives.",
+      "tags": ["bowl", "meal-prep", "healthy"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["white rice", 1.5, "cup"], ["cucumber", 1, "unit"], ["cherry tomatoes", 1, "pint"], ["feta cheese", 4, "oz"], ["olives", 0.5, "cup"], ["red onion", 0.5, "unit"], ["lemon", 2, "unit"], ["oregano", 1, "tbsp"], ["olive oil", 3, "tbsp"], ["greek yogurt", 0.75, "cup"]],
+      "steps": ["Marinate chicken in lemon, oregano, and olive oil; sear and slice.", "Build bowls over rice with cucumber, tomatoes, olives, and feta.", "Top with lemony yogurt sauce."]
+    },
+    {
+      "title": "Falafel Pita Wraps",
+      "cuisine": "middle eastern", "protein": "vegetarian", "prep": 25, "cook": 15, "servings": 4, "difficulty": "medium",
+      "desc": "Crispy chickpea falafel in pita with tahini sauce. Vegan. Contains sesame.",
+      "tags": ["vegan", "sesame"],
+      "ingredients": [["chickpeas", 30, "oz"], ["pita bread", 4, "unit"], ["tahini", 0.33, "cup"], ["parsley", 1, "bunch"], ["cilantro", 1, "bunch"], ["garlic", 4, "clove"], ["cumin", 2, "tsp"], ["flour", 3, "tbsp"], ["cucumber", 1, "unit"], ["tomatoes", 2, "unit"], ["lemon", 1, "unit"], ["vegetable oil", 1, "cup"]],
+      "steps": ["Blend chickpeas with herbs, garlic, cumin, and flour; form balls.", "Shallow-fry until deeply crisp.", "Stuff pitas with falafel, cucumber, tomato, and lemony tahini."]
+    },
+    {
+      "title": "Shakshuka",
+      "cuisine": "middle eastern", "protein": "vegetarian", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Eggs poached in spiced pepper-tomato sauce with crusty bread.",
+      "tags": ["vegetarian", "brunch", "one-pan", "budget"],
+      "ingredients": [["eggs", 6, "unit"], ["canned tomatoes", 28, "oz"], ["bell peppers", 2, "unit"], ["onion", 1, "unit"], ["garlic", 3, "clove"], ["smoked paprika", 2, "tsp"], ["cumin", 1, "tsp"], ["feta cheese", 3, "oz"], ["baguette", 1, "unit"], ["parsley", 0.5, "bunch"]],
+      "steps": ["Stew peppers, onion, and garlic with spices and tomatoes.", "Nestle in eggs; cover until whites set.", "Top with feta and parsley; serve with bread."]
+    },
+    {
+      "title": "Greek Salad with Grilled Shrimp",
+      "cuisine": "greek", "protein": "shrimp", "prep": 15, "cook": 8, "servings": 4, "difficulty": "easy",
+      "desc": "Crisp village salad topped with charred shrimp. Contains shellfish.",
+      "tags": ["shellfish", "salad", "light", "quick"],
+      "ingredients": [["shrimp", 1, "lb"], ["cucumber", 2, "unit"], ["tomatoes", 4, "unit"], ["red onion", 1, "unit"], ["feta cheese", 6, "oz"], ["olives", 0.75, "cup"], ["oregano", 1, "tbsp"], ["olive oil", 4, "tbsp"], ["lemon", 1, "unit"]],
+      "steps": ["Toss cucumbers, tomatoes, onion, olives, and feta with oil and oregano.", "Grill lemony shrimp 2 minutes per side.", "Pile shrimp over the salad."]
+    },
+    {
+      "title": "Lemon Herb Baked Cod",
+      "cuisine": "mediterranean", "protein": "fish", "prep": 10, "cook": 18, "servings": 4, "difficulty": "easy",
+      "desc": "Cod baked with lemon, dill, and olive oil over couscous. Contains fish.",
+      "tags": ["fish", "healthy", "quick", "light"],
+      "ingredients": [["cod fillet", 1.5, "lb"], ["lemon", 2, "unit"], ["dill", 0.5, "pack"], ["olive oil", 3, "tbsp"], ["garlic", 3, "clove"], ["couscous", 1.5, "cup"], ["cherry tomatoes", 1, "pint"], ["spinach", 5, "oz"]],
+      "steps": ["Bake cod with lemon, garlic, dill, and olive oil at 400°F.", "Steam couscous; wilt spinach with tomatoes.", "Serve cod over couscous with pan juices."]
+    },
+    {
+      "title": "Chicken Souvlaki Plates",
+      "cuisine": "greek", "protein": "chicken", "prep": 20, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Skewered lemon-garlic chicken with pita and yogurt sauce.",
+      "tags": ["grill", "family"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["greek yogurt", 1, "cup"], ["pita bread", 4, "unit"], ["cucumber", 1, "unit"], ["lemon", 2, "unit"], ["garlic", 4, "clove"], ["oregano", 1, "tbsp"], ["olive oil", 3, "tbsp"], ["red onion", 1, "unit"], ["tomatoes", 2, "unit"]],
+      "steps": ["Marinate chicken cubes in lemon, garlic, oregano, and oil; skewer and grill.", "Stir cucumber and garlic into yogurt for tzatziki.", "Serve with warm pita, tomato, and onion."]
+    },
+    {
+      "title": "Stuffed Bell Peppers",
+      "cuisine": "mediterranean", "protein": "beef", "prep": 20, "cook": 40, "servings": 4, "difficulty": "medium",
+      "desc": "Peppers baked with a savory beef, rice, and tomato filling.",
+      "tags": ["comfort", "meal-prep"],
+      "ingredients": [["bell peppers", 4, "unit"], ["ground beef", 1, "lb"], ["white rice", 1, "cup"], ["onion", 1, "unit"], ["garlic", 3, "clove"], ["canned tomatoes", 14, "oz"], ["oregano", 1, "tbsp"], ["feta cheese", 4, "oz"], ["parsley", 0.5, "bunch"]],
+      "steps": ["Brown beef with onion and garlic; mix with cooked rice and tomatoes.", "Stuff halved peppers and top with feta.", "Bake covered at 375°F for 35 minutes."]
+    },
+    {
+      "title": "Bibimbap",
+      "cuisine": "korean", "protein": "beef", "prep": 30, "cook": 20, "servings": 4, "difficulty": "medium",
+      "desc": "Rice bowls with marinated beef, sautéed vegetables, egg, and gochujang.",
+      "tags": ["bowl", "healthy"],
+      "ingredients": [["ground beef", 1, "lb"], ["white rice", 1.5, "cup"], ["spinach", 5, "oz"], ["carrots", 2, "unit"], ["mushrooms", 8, "oz"], ["eggs", 4, "unit"], ["gochujang", 3, "tbsp"], ["soy sauce", 2, "tbsp"], ["sesame oil", 2, "tbsp"], ["garlic", 3, "clove"], ["sesame seeds", 1, "tbsp"]],
+      "steps": ["Sauté each vegetable separately with sesame oil; brown soy-garlic beef.", "Fry eggs sunny-side up.", "Arrange over rice with gochujang and sesame."]
+    },
+    {
+      "title": "Beef Bulgogi",
+      "cuisine": "korean", "protein": "beef", "prep": 20, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Sweet-savory marinated beef seared hot, with rice and lettuce cups.",
+      "tags": ["quick", "grill", "family"],
+      "ingredients": [["beef sirloin", 1.5, "lb"], ["soy sauce", 0.33, "cup"], ["brown sugar", 2, "tbsp"], ["sesame oil", 2, "tbsp"], ["garlic", 4, "clove"], ["ginger", 1, "tbsp"], ["scallions", 1, "bunch"], ["white rice", 1.5, "cup"], ["romaine lettuce", 1, "head"], ["sesame seeds", 1, "tbsp"]],
+      "steps": ["Marinate shaved beef in soy, sugar, sesame, garlic, and ginger.", "Sear in a screaming-hot pan in batches.", "Serve with rice, lettuce cups, and scallions."]
+    },
+    {
+      "title": "Kimchi Fried Rice",
+      "cuisine": "korean", "protein": "pork", "prep": 10, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Funky-spicy fried rice with kimchi, bacon, and a fried egg.",
+      "tags": ["quick", "pantry-friendly", "leftovers"],
+      "ingredients": [["kimchi", 14, "oz"], ["white rice", 2, "cup"], ["bacon", 6, "oz"], ["eggs", 4, "unit"], ["gochujang", 1, "tbsp"], ["soy sauce", 1, "tbsp"], ["sesame oil", 1, "tbsp"], ["scallions", 1, "bunch"]],
+      "steps": ["Crisp bacon; fry chopped kimchi in the fat.", "Add cold rice, gochujang, and soy; fry hard.", "Top with fried eggs, sesame oil, and scallions."]
+    },
+    {
+      "title": "Sundubu Tofu Stew",
+      "cuisine": "korean", "protein": "tofu", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Bubbling soft tofu stew with mushrooms and egg.",
+      "tags": ["vegetarian-option", "soup", "spicy"],
+      "ingredients": [["tofu", 28, "oz"], ["kimchi", 7, "oz"], ["mushrooms", 8, "oz"], ["gochujang", 2, "tbsp"], ["vegetable broth", 4, "cup"], ["eggs", 2, "unit"], ["scallions", 1, "bunch"], ["sesame oil", 1, "tbsp"], ["garlic", 3, "clove"], ["white rice", 1.5, "cup"]],
+      "steps": ["Sauté kimchi, garlic, and gochujang in sesame oil.", "Add broth, mushrooms, and soft tofu; simmer.", "Crack in eggs off heat; serve bubbling with rice."]
+    },
+    {
+      "title": "Gochujang Chicken Bowls",
+      "cuisine": "korean", "protein": "chicken", "prep": 15, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Sticky-spicy glazed chicken over rice with quick cucumber salad.",
+      "tags": ["bowl", "quick", "meal-prep"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["gochujang", 3, "tbsp"], ["honey", 2, "tbsp"], ["soy sauce", 2, "tbsp"], ["garlic", 3, "clove"], ["white rice", 1.5, "cup"], ["cucumber", 2, "unit"], ["rice vinegar", 2, "tbsp"], ["sesame seeds", 1, "tbsp"], ["scallions", 1, "bunch"]],
+      "steps": ["Sear chicken; glaze with gochujang, honey, soy, and garlic.", "Quick-pickle cucumbers in vinegar.", "Serve over rice with sesame and scallions."]
+    },
+    {
+      "title": "Quick Chicken Pho",
+      "cuisine": "vietnamese", "protein": "chicken", "prep": 15, "cook": 30, "servings": 4, "difficulty": "medium",
+      "desc": "Aromatic chicken noodle soup with herbs and lime.",
+      "tags": ["soup", "light", "healthy"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["rice noodles", 8, "oz"], ["chicken broth", 8, "cup"], ["ginger", 3, "tbsp"], ["onion", 1, "unit"], ["fish sauce", 2, "tbsp"], ["cinnamon", 1, "stick"], ["lime", 2, "unit"], ["cilantro", 1, "bunch"], ["scallions", 1, "bunch"], ["jalapeno", 1, "unit"]],
+      "steps": ["Simmer broth with charred ginger, onion, and cinnamon; poach chicken.", "Cook noodles; slice chicken.", "Assemble bowls and top with herbs, lime, and chili."]
+    },
+    {
+      "title": "Banh Mi Rice Bowls",
+      "cuisine": "vietnamese", "protein": "pork", "prep": 20, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Caramelized pork with pickled vegetables and sriracha mayo over rice.",
+      "tags": ["bowl", "quick", "meal-prep"],
+      "ingredients": [["ground pork", 1, "lb"], ["white rice", 1.5, "cup"], ["carrots", 2, "unit"], ["cucumber", 1, "unit"], ["rice vinegar", 0.25, "cup"], ["sugar", 2, "tbsp"], ["fish sauce", 2, "tbsp"], ["garlic", 3, "clove"], ["mayonnaise", 3, "tbsp"], ["sriracha", 1, "tbsp"], ["cilantro", 1, "bunch"]],
+      "steps": ["Quick-pickle carrot and cucumber in vinegar and sugar.", "Brown pork with garlic, fish sauce, and a little sugar until caramelized.", "Serve over rice with pickles, sriracha mayo, and cilantro."]
+    },
+    {
+      "title": "Lemongrass Pork Chops",
+      "cuisine": "vietnamese", "protein": "pork", "prep": 20, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Grilled lemongrass-marinated pork with rice and cucumber.",
+      "tags": ["grill", "quick"],
+      "ingredients": [["pork tenderloin", 1.5, "lb"], ["lemongrass", 3, "stalk"], ["fish sauce", 3, "tbsp"], ["brown sugar", 2, "tbsp"], ["garlic", 4, "clove"], ["lime", 2, "unit"], ["white rice", 1.5, "cup"], ["cucumber", 1, "unit"], ["scallions", 1, "bunch"]],
+      "steps": ["Marinate pork in minced lemongrass, fish sauce, sugar, and garlic.", "Grill or sear until charred and cooked through.", "Serve over rice with cucumber and scallion-lime dressing."]
+    },
+    {
+      "title": "Shrimp Spring Roll Bowls",
+      "cuisine": "vietnamese", "protein": "shrimp", "prep": 25, "cook": 8, "servings": 4, "difficulty": "easy",
+      "desc": "Deconstructed spring rolls: shrimp, noodles, herbs, peanut drizzle. Contains shellfish and peanuts.",
+      "tags": ["shellfish", "peanuts", "light", "cold"],
+      "ingredients": [["shrimp", 1, "lb"], ["rice noodles", 8, "oz"], ["romaine lettuce", 1, "head"], ["carrots", 2, "unit"], ["cucumber", 1, "unit"], ["mint", 0.5, "pack"], ["cilantro", 1, "bunch"], ["peanut butter", 3, "tbsp"], ["hoisin sauce", 2, "tbsp"], ["lime", 2, "unit"], ["fish sauce", 1, "tbsp"]],
+      "steps": ["Poach shrimp; cook and rinse noodles cold.", "Whisk peanut butter, hoisin, lime, and fish sauce into a drizzle.", "Build bowls with lettuce, herbs, and vegetables; top with shrimp and sauce."]
+    },
+    {
+      "title": "Coq au Vin",
+      "cuisine": "french", "protein": "chicken", "prep": 25, "cook": 75, "servings": 4, "difficulty": "hard",
+      "desc": "Chicken braised in red wine with bacon, mushrooms, and pearl onions.",
+      "tags": ["weekend", "date-night", "comfort"],
+      "ingredients": [["chicken thighs", 2, "lb"], ["red wine", 2, "cup"], ["bacon", 6, "oz"], ["mushrooms", 8, "oz"], ["shallots", 3, "unit"], ["carrots", 2, "unit"], ["chicken broth", 1, "cup"], ["tomato paste", 1, "tbsp"], ["thyme", 3, "sprig"], ["butter", 2, "tbsp"], ["flour", 2, "tbsp"], ["baguette", 1, "unit"]],
+      "steps": ["Crisp bacon; brown chicken in the fat.", "Braise with wine, broth, vegetables, and thyme for an hour.", "Thicken with beurre manié; serve with baguette."]
+    },
+    {
+      "title": "Ratatouille with White Beans",
+      "cuisine": "french", "protein": "vegetarian", "prep": 20, "cook": 40, "servings": 4, "difficulty": "medium",
+      "desc": "Provençal stewed vegetables with beans and crusty bread. Vegan.",
+      "tags": ["vegan", "healthy", "budget"],
+      "ingredients": [["eggplant", 1, "unit"], ["zucchini", 2, "unit"], ["bell peppers", 2, "unit"], ["tomatoes", 4, "unit"], ["onion", 1, "unit"], ["garlic", 4, "clove"], ["chickpeas", 15, "oz"], ["olive oil", 4, "tbsp"], ["thyme", 2, "sprig"], ["basil", 0.5, "cup"], ["baguette", 1, "unit"]],
+      "steps": ["Sauté eggplant, zucchini, and peppers in batches.", "Stew with tomatoes, onion, garlic, beans, and thyme.", "Finish with basil; serve with bread."]
+    },
+    {
+      "title": "Croque Monsieur",
+      "cuisine": "french", "protein": "pork", "prep": 15, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Griddled ham and gruyère sandwiches under béchamel, with greens.",
+      "tags": ["quick", "comfort", "brunch"],
+      "ingredients": [["sandwich bread", 8, "slice"], ["ham", 8, "oz"], ["gruyere cheese", 6, "oz"], ["butter", 3, "tbsp"], ["flour", 2, "tbsp"], ["milk", 1.5, "cup"], ["dijon mustard", 1, "tbsp"], ["spinach", 5, "oz"], ["olive oil", 1, "tbsp"], ["lemon", 0.5, "unit"]],
+      "steps": ["Make a quick béchamel with dijon.", "Layer ham and gruyère between bread; top with béchamel and more cheese.", "Bake until bubbling; serve with lemony spinach salad."]
+    },
+    {
+      "title": "Salmon Niçoise Salad",
+      "cuisine": "french", "protein": "fish", "prep": 20, "cook": 20, "servings": 4, "difficulty": "medium",
+      "desc": "Seared salmon over potatoes, green beans, eggs, and olives. Contains fish.",
+      "tags": ["fish", "salad", "healthy"],
+      "ingredients": [["salmon fillet", 1.5, "lb"], ["potatoes", 3, "unit"], ["green beans", 0.5, "lb"], ["eggs", 4, "unit"], ["olives", 0.5, "cup"], ["cherry tomatoes", 1, "pint"], ["dijon mustard", 1, "tbsp"], ["olive oil", 4, "tbsp"], ["lemon", 1, "unit"], ["capers", 1, "tbsp"]],
+      "steps": ["Boil potatoes, beans, and eggs; chill.", "Sear salmon to medium.", "Compose the salad and dress with lemon-dijon vinaigrette."]
+    },
+    {
+      "title": "Chicken Shawarma Bowls",
+      "cuisine": "middle eastern", "protein": "chicken", "prep": 20, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Spiced roasted chicken over rice with tahini drizzle. Contains sesame.",
+      "tags": ["bowl", "meal-prep", "sesame"],
+      "ingredients": [["chicken thighs", 1.5, "lb"], ["greek yogurt", 0.5, "cup"], ["cumin", 1, "tbsp"], ["smoked paprika", 1, "tbsp"], ["turmeric", 1, "tsp"], ["cinnamon", 0.5, "tsp"], ["white rice", 1.5, "cup"], ["tahini", 0.25, "cup"], ["lemon", 2, "unit"], ["cucumber", 1, "unit"], ["tomatoes", 2, "unit"], ["red onion", 0.5, "unit"]],
+      "steps": ["Marinate chicken in yogurt and warm spices; roast at 425°F until charred.", "Whisk tahini with lemon and water.", "Serve over rice with chopped salad and tahini."]
+    },
+    {
+      "title": "Lamb Kofta with Couscous",
+      "cuisine": "middle eastern", "protein": "lamb", "prep": 20, "cook": 15, "servings": 4, "difficulty": "medium",
+      "desc": "Spiced lamb skewers with herbed couscous and yogurt sauce.",
+      "tags": ["grill", "family"],
+      "ingredients": [["ground lamb", 1.5, "lb"], ["couscous", 1.5, "cup"], ["onion", 1, "unit"], ["garlic", 3, "clove"], ["cumin", 1, "tbsp"], ["cinnamon", 0.5, "tsp"], ["parsley", 1, "bunch"], ["mint", 0.5, "pack"], ["greek yogurt", 1, "cup"], ["lemon", 1, "unit"]],
+      "steps": ["Mix lamb with grated onion, garlic, and spices; form onto skewers.", "Grill until charred and just cooked.", "Serve over herbed couscous with lemony yogurt."]
+    },
+    {
+      "title": "Mujadara",
+      "cuisine": "middle eastern", "protein": "vegetarian", "prep": 10, "cook": 40, "servings": 4, "difficulty": "easy",
+      "desc": "Lentils and rice crowned with deeply caramelized onions. Vegan.",
+      "tags": ["vegan", "budget", "pantry-friendly"],
+      "ingredients": [["brown lentils", 1, "cup"], ["white rice", 1, "cup"], ["onion", 3, "unit"], ["olive oil", 0.25, "cup"], ["cumin", 2, "tsp"], ["bay leaves", 2, "unit"], ["greek yogurt", 0.75, "cup"], ["parsley", 0.5, "bunch"]],
+      "steps": ["Caramelize sliced onions slowly in olive oil until deep brown.", "Simmer lentils, then add rice, cumin, and bay; cook through.", "Top with onions, yogurt, and parsley."]
+    },
+    {
+      "title": "Hummus Bowls with Spiced Chicken",
+      "cuisine": "middle eastern", "protein": "chicken", "prep": 10, "cook": 15, "servings": 4, "difficulty": "easy",
+      "desc": "Warm hummus topped with cumin chicken, pine-free crunch, and pita. Contains sesame.",
+      "tags": ["quick", "bowl", "sesame"],
+      "ingredients": [["hummus", 20, "oz"], ["chicken breast", 1, "lb"], ["cumin", 2, "tsp"], ["smoked paprika", 1, "tsp"], ["olive oil", 2, "tbsp"], ["pita bread", 4, "unit"], ["cucumber", 1, "unit"], ["cherry tomatoes", 1, "pint"], ["parsley", 0.5, "bunch"], ["lemon", 1, "unit"]],
+      "steps": ["Sear spiced diced chicken in olive oil.", "Swoosh hummus into bowls; pile chicken on top.", "Add cucumber, tomatoes, parsley, and lemon; scoop with warm pita."]
+    },
+    {
+      "title": "Tuna White Bean Salad",
+      "cuisine": "mediterranean", "protein": "fish", "prep": 15, "cook": 0, "servings": 4, "difficulty": "easy",
+      "desc": "No-cook pantry salad with tuna, beans, olives, and lemon. Contains fish.",
+      "tags": ["fish", "no-cook", "quick", "pantry-friendly", "budget"],
+      "ingredients": [["tuna", 10, "oz"], ["chickpeas", 15, "oz"], ["red onion", 0.5, "unit"], ["olives", 0.5, "cup"], ["cherry tomatoes", 1, "pint"], ["parsley", 0.5, "bunch"], ["lemon", 2, "unit"], ["olive oil", 3, "tbsp"], ["baguette", 1, "unit"]],
+      "steps": ["Flake tuna with chickpeas, onion, olives, and tomatoes.", "Dress with lemon, olive oil, and parsley.", "Serve with toasted baguette."]
+    },
+    {
+      "title": "Caesar Salad with Chicken",
+      "cuisine": "american", "protein": "chicken", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Crisp romaine, garlicky dressing, parmesan, and seared chicken. Contains fish (anchovy).",
+      "tags": ["salad", "quick"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["romaine lettuce", 2, "head"], ["parmesan cheese", 0.75, "cup"], ["croutons", 5, "oz"], ["anchovies", 4, "unit"], ["garlic", 2, "clove"], ["mayonnaise", 0.5, "cup"], ["lemon", 1, "unit"], ["dijon mustard", 1, "tsp"]],
+      "steps": ["Whisk a Caesar dressing from mayo, anchovy, garlic, lemon, and dijon.", "Sear and slice the chicken.", "Toss romaine with dressing, croutons, and parmesan; top with chicken."]
+    },
+    {
+      "title": "Quinoa Power Bowls",
+      "cuisine": "american", "protein": "vegetarian", "prep": 15, "cook": 25, "servings": 4, "difficulty": "easy",
+      "desc": "Quinoa with roasted sweet potato, kale, avocado, and lemon-tahini. Vegan. Contains sesame.",
+      "tags": ["vegan", "healthy", "meal-prep", "sesame"],
+      "ingredients": [["quinoa", 1.5, "cup"], ["sweet potatoes", 2, "unit"], ["kale", 1, "bunch"], ["avocado", 2, "unit"], ["chickpeas", 15, "oz"], ["tahini", 0.25, "cup"], ["lemon", 2, "unit"], ["olive oil", 3, "tbsp"], ["smoked paprika", 1, "tsp"]],
+      "steps": ["Roast cubed sweet potato and chickpeas with paprika.", "Cook quinoa; massage kale with lemon and oil.", "Assemble bowls with avocado and lemon-tahini drizzle."]
+    },
+    {
+      "title": "Turkey-Style Stuffed Sweet Potatoes",
+      "cuisine": "american", "protein": "vegetarian", "prep": 10, "cook": 45, "servings": 4, "difficulty": "easy",
+      "desc": "Baked sweet potatoes loaded with black beans, corn, and cheese.",
+      "tags": ["vegetarian", "healthy", "budget"],
+      "ingredients": [["sweet potatoes", 4, "unit"], ["black beans", 15, "oz"], ["corn", 1, "cup"], ["cheddar cheese", 4, "oz"], ["greek yogurt", 0.5, "cup"], ["scallions", 1, "bunch"], ["chili powder", 1, "tsp"], ["lime", 1, "unit"]],
+      "steps": ["Bake sweet potatoes at 400°F until tender.", "Warm beans and corn with chili powder.", "Split, stuff, and top with cheese, yogurt, scallions, and lime."]
+    },
+    {
+      "title": "Almond-Crusted Chicken Tenders",
+      "cuisine": "american", "protein": "chicken", "prep": 15, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Oven-baked chicken tenders in a crunchy almond crust with honey mustard. Contains tree nuts.",
+      "tags": ["tree-nuts", "family", "healthy"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["almonds", 1.5, "cup"], ["eggs", 2, "unit"], ["dijon mustard", 2, "tbsp"], ["honey", 2, "tbsp"], ["smoked paprika", 1, "tsp"], ["green beans", 1, "lb"], ["olive oil", 2, "tbsp"]],
+      "steps": ["Pulse almonds into coarse crumbs with paprika.", "Dip chicken strips in egg, then almonds; bake at 425°F until crisp.", "Serve with honey-mustard and roasted green beans."]
+    },
+    {
+      "title": "Walnut Pesto Zoodle Bowls",
+      "cuisine": "italian", "protein": "vegetarian", "prep": 20, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Zucchini noodles and penne in walnut-basil pesto. Contains tree nuts.",
+      "tags": ["vegetarian", "tree-nuts", "light"],
+      "ingredients": [["zucchini", 3, "unit"], ["penne pasta", 0.5, "lb"], ["walnuts", 1, "cup"], ["basil", 2, "pack"], ["parmesan cheese", 0.75, "cup"], ["garlic", 2, "clove"], ["olive oil", 0.33, "cup"], ["lemon", 1, "unit"], ["cherry tomatoes", 1, "pint"]],
+      "steps": ["Blend walnuts, basil, parmesan, garlic, and oil into pesto.", "Boil penne; ribbon the zucchini.", "Toss everything with lemon and tomatoes."]
+    },
+    {
+      "title": "Cashew Chicken",
+      "cuisine": "chinese", "protein": "chicken", "prep": 15, "cook": 12, "servings": 4, "difficulty": "easy",
+      "desc": "Stir-fried chicken and toasted cashews in a glossy sauce. Contains tree nuts.",
+      "tags": ["tree-nuts", "takeout-style", "quick"],
+      "ingredients": [["chicken breast", 1.5, "lb"], ["cashews", 1, "cup"], ["bell peppers", 1, "unit"], ["scallions", 1, "bunch"], ["hoisin sauce", 3, "tbsp"], ["soy sauce", 2, "tbsp"], ["cornstarch", 2, "tbsp"], ["garlic", 3, "clove"], ["white rice", 1.5, "cup"]],
+      "steps": ["Velvet chicken with cornstarch; stir-fry until golden.", "Add garlic, peppers, and the hoisin-soy sauce.", "Toss in toasted cashews; serve over rice with scallions."]
+    },
+    {
+      "title": "One-Pot Lemon Orzo with Shrimp",
+      "cuisine": "mediterranean", "protein": "shrimp", "prep": 10, "cook": 20, "servings": 4, "difficulty": "easy",
+      "desc": "Creamy lemon couscous-style orzo with shrimp and spinach. Contains shellfish.",
+      "tags": ["shellfish", "one-pan", "quick"],
+      "ingredients": [["shrimp", 1, "lb"], ["couscous", 1.5, "cup"], ["chicken broth", 3, "cup"], ["spinach", 5, "oz"], ["lemon", 2, "unit"], ["garlic", 4, "clove"], ["feta cheese", 3, "oz"], ["olive oil", 2, "tbsp"], ["dill", 0.5, "pack"]],
+      "steps": ["Sauté garlic; toast couscous and simmer in broth.", "Stir in shrimp and spinach until pink and wilted.", "Finish with lemon, feta, and dill."]
+    },
+    {
+      "title": "Veggie Egg Fried Rice",
+      "cuisine": "chinese", "protein": "vegetarian", "prep": 10, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Fast pantry fried rice with eggs and whatever vegetables need using.",
+      "tags": ["vegetarian", "quick", "pantry-friendly", "budget", "leftovers"],
+      "ingredients": [["white rice", 2, "cup"], ["eggs", 4, "unit"], ["frozen peas", 1, "cup"], ["carrots", 2, "unit"], ["scallions", 1, "bunch"], ["soy sauce", 3, "tbsp"], ["sesame oil", 1, "tbsp"], ["garlic", 3, "clove"]],
+      "steps": ["Scramble eggs and set aside.", "Fry cold rice with garlic, carrots, and peas over high heat.", "Toss with soy, sesame oil, eggs, and scallions."]
+    },
+    {
+      "title": "Harissa-Style Chickpea Stew",
+      "cuisine": "middle eastern", "protein": "vegetarian", "prep": 10, "cook": 25, "servings": 4, "difficulty": "easy",
+      "desc": "Smoky-spicy chickpea and tomato stew with greens. Vegan.",
+      "tags": ["vegan", "soup", "pantry-friendly", "budget"],
+      "ingredients": [["chickpeas", 30, "oz"], ["canned tomatoes", 28, "oz"], ["onion", 1, "unit"], ["garlic", 4, "clove"], ["smoked paprika", 1, "tbsp"], ["cumin", 2, "tsp"], ["red pepper flakes", 1, "tsp"], ["kale", 1, "bunch"], ["lemon", 1, "unit"], ["olive oil", 3, "tbsp"], ["pita bread", 4, "unit"]],
+      "steps": ["Soften onion and garlic; bloom the spices in olive oil.", "Add tomatoes and chickpeas; simmer 15 minutes.", "Wilt in kale; finish with lemon and serve with pita."]
+    },
+    {
+      "title": "Sheet-Pan Sausage and Veggies",
+      "cuisine": "american", "protein": "pork", "prep": 10, "cook": 30, "servings": 4, "difficulty": "easy",
+      "desc": "Everything roasts on one pan: sausage, potatoes, peppers, broccoli.",
+      "tags": ["one-pan", "family", "easy-cleanup"],
+      "ingredients": [["italian sausage", 1.5, "lb"], ["potatoes", 3, "unit"], ["bell peppers", 2, "unit"], ["broccoli", 1, "head"], ["red onion", 1, "unit"], ["olive oil", 3, "tbsp"], ["oregano", 1, "tbsp"], ["garlic", 3, "clove"]],
+      "steps": ["Toss everything with oil, garlic, and oregano on a sheet pan.", "Roast at 425°F for 30 minutes, tossing once.", "Serve straight from the pan."]
+    },
+    {
+      "title": "Caprese Orzo Salad",
+      "cuisine": "italian", "protein": "vegetarian", "prep": 15, "cook": 10, "servings": 4, "difficulty": "easy",
+      "desc": "Chilled couscous-style salad with mozzarella, tomatoes, and basil.",
+      "tags": ["vegetarian", "cold", "meal-prep", "quick"],
+      "ingredients": [["couscous", 1.5, "cup"], ["mozzarella cheese", 8, "oz"], ["cherry tomatoes", 2, "pint"], ["basil", 1, "pack"], ["olive oil", 3, "tbsp"], ["lemon", 1, "unit"], ["garlic", 1, "clove"], ["spinach", 5, "oz"]],
+      "steps": ["Cook couscous and cool.", "Toss with mozzarella, tomatoes, spinach, and basil.", "Dress with lemon, garlic, and olive oil."]
+    }
+  ]
+}

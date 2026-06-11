@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Google ADK (for Kroger agent LLM)
     GOOGLE_API_KEY: str | None = None
 
+    # Dev-only: serve the meal-planning demo page and let it act as the
+    # seeded demo user without Firebase auth. Never enable in production.
+    DEMO_MODE: bool = False
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import open_pool, close_pool, get_async_pool
 from app.agents.ingredient_resolver.resources import set_pool_provider
-from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents
+from app.api.routes import users, recipes, pantry, grocery, collections, stores, orders, savings, agents, meal_plans
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,6 +60,10 @@ app.include_router(stores.router)
 app.include_router(orders.router)
 app.include_router(savings.router)
 app.include_router(agents.router)
+app.include_router(meal_plans.router)
+
+if settings.DEMO_MODE:
+    logger.warning("DEMO_MODE is on — meal-plan routes act as the seeded demo user (dev only)")
 
 
 @app.get("/health")
