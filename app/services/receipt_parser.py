@@ -54,15 +54,15 @@ _PARSE_SYSTEM = (
 )
 
 
-def _call_gcv(image_bytes: bytes) -> str:
+async def _call_gcv(image_bytes: bytes) -> str:
     """POST image to GCV DOCUMENT_TEXT_DETECTION. Returns raw text string."""
     if not settings.GCV_API_KEY:
         raise RuntimeError("GCV_API_KEY is not configured.")
 
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    with httpx.Client(timeout=30) as client:
-        resp = client.post(
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
             f"{_GCV_URL}?key={settings.GCV_API_KEY}",
             json={
                 "requests": [
@@ -79,12 +79,12 @@ def _call_gcv(image_bytes: bytes) -> str:
     return data.get("responses", [{}])[0].get("fullTextAnnotation", {}).get("text", "")
 
 
-def _call_haiku(raw_text: str) -> dict:
+async def _call_haiku(raw_text: str) -> dict:
     """Parse raw receipt OCR text with Claude Haiku. Returns ScanResponse dict."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     prompt = (
         "Parse this grocery receipt OCR text into structured JSON.\n\n"
         f"Return JSON matching this schema exactly:\n{_RECEIPT_SCHEMA}\n\n"
@@ -99,7 +99,7 @@ def _call_haiku(raw_text: str) -> dict:
         f"Receipt text:\n{raw_text}"
     )
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=8192,
         system=_PARSE_SYSTEM,
@@ -138,7 +138,7 @@ async def parse_receipt_image(image_bytes: bytes, content_type: str) -> dict:
         raise ValueError("Image exceeds 5 MB limit.")
 
     try:
-        raw_text = _call_gcv(image_bytes)
+        raw_text = await _call_gcv(image_bytes)
     except RuntimeError:
         raise
     except Exception as e:
@@ -149,7 +149,7 @@ async def parse_receipt_image(image_bytes: bytes, content_type: str) -> dict:
         raise RuntimeError("No text found in image.")
 
     try:
-        return _call_haiku(raw_text)
+        return await _call_haiku(raw_text)
     except RuntimeError:
         raise
     except Exception as e:

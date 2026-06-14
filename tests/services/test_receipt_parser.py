@@ -1,8 +1,7 @@
 import json
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
-# All imports will fail until Task 2 creates the module — that's expected.
 from app.services.receipt_parser import parse_receipt_image, _call_gcv, _call_haiku
 
 VALID_JPEG = b"\xff\xd8\xff" + b"\x00" * 100  # minimal fake JPEG bytes
@@ -71,126 +70,133 @@ async def test_oversized_image_raises_value_error():
 
 # ── GCV tests ───────────────────────────────────────────────────────────────
 
-def test_call_gcv_no_api_key_raises_runtime_error():
+@pytest.mark.asyncio
+async def test_call_gcv_no_api_key_raises_runtime_error():
     with patch("app.services.receipt_parser.settings") as mock_settings:
         mock_settings.GCV_API_KEY = ""
         with pytest.raises(RuntimeError, match="GCV_API_KEY"):
-            _call_gcv(VALID_JPEG)
+            await _call_gcv(VALID_JPEG)
 
 
-def test_call_gcv_returns_text():
-    gcv_response = {
-        "responses": [
-            {"fullTextAnnotation": {"text": SAMPLE_RAW_TEXT}}
-        ]
-    }
+@pytest.mark.asyncio
+async def test_call_gcv_returns_text():
+    gcv_response = {"responses": [{"fullTextAnnotation": {"text": SAMPLE_RAW_TEXT}}]}
     mock_resp = MagicMock()
     mock_resp.json.return_value = gcv_response
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.httpx.Client") as mock_client_cls:
-        mock_settings.GCV_API_KEY = "test-key"
-        mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
 
-        result = _call_gcv(VALID_JPEG)
+    with patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.httpx.AsyncClient", return_value=mock_client):
+        mock_settings.GCV_API_KEY = "test-key"
+        result = await _call_gcv(VALID_JPEG)
 
     assert result == SAMPLE_RAW_TEXT
 
 
-def test_call_gcv_empty_response_returns_empty_string():
+@pytest.mark.asyncio
+async def test_call_gcv_empty_response_returns_empty_string():
     gcv_response = {"responses": [{}]}
     mock_resp = MagicMock()
     mock_resp.json.return_value = gcv_response
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.httpx.Client") as mock_client_cls:
-        mock_settings.GCV_API_KEY = "test-key"
-        mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
 
-        result = _call_gcv(VALID_JPEG)
+    with patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.httpx.AsyncClient", return_value=mock_client):
+        mock_settings.GCV_API_KEY = "test-key"
+        result = await _call_gcv(VALID_JPEG)
 
     assert result == ""
 
 
-def test_call_gcv_http_error_raises():
+@pytest.mark.asyncio
+async def test_call_gcv_http_error_raises():
     import httpx
     mock_resp = MagicMock()
     mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
         "403", request=MagicMock(), response=MagicMock()
     )
 
-    with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.httpx.Client") as mock_client_cls:
-        mock_settings.GCV_API_KEY = "test-key"
-        mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
 
+    with patch("app.services.receipt_parser.settings") as mock_settings, \
+         patch("app.services.receipt_parser.httpx.AsyncClient", return_value=mock_client):
+        mock_settings.GCV_API_KEY = "test-key"
         with pytest.raises(httpx.HTTPStatusError):
-            _call_gcv(VALID_JPEG)
+            await _call_gcv(VALID_JPEG)
 
 
 # ── Haiku tests ──────────────────────────────────────────────────────────────
 
-def test_call_haiku_no_api_key_raises_runtime_error():
+@pytest.mark.asyncio
+async def test_call_haiku_no_api_key_raises_runtime_error():
     with patch("app.services.receipt_parser.settings") as mock_settings:
         mock_settings.ANTHROPIC_API_KEY = ""
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
-            _call_haiku(SAMPLE_RAW_TEXT)
+            await _call_haiku(SAMPLE_RAW_TEXT)
 
 
-def test_call_haiku_json_parse_error_raises_runtime_error():
+@pytest.mark.asyncio
+async def test_call_haiku_json_parse_error_raises_runtime_error():
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text="not valid json {{{{")]
 
     with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+         patch("app.services.receipt_parser.anthropic.AsyncAnthropic") as mock_anthropic:
         mock_settings.ANTHROPIC_API_KEY = "test-key"
-        mock_anthropic.return_value.messages.create.return_value = mock_message
+        mock_anthropic.return_value.messages.create = AsyncMock(return_value=mock_message)
 
         with pytest.raises(RuntimeError, match="Receipt parsing failed"):
-            _call_haiku(SAMPLE_RAW_TEXT)
+            await _call_haiku(SAMPLE_RAW_TEXT)
 
 
-def test_call_haiku_returns_parsed_dict():
+@pytest.mark.asyncio
+async def test_call_haiku_returns_parsed_dict():
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=json.dumps(SAMPLE_SCAN_RESPONSE))]
 
     with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+         patch("app.services.receipt_parser.anthropic.AsyncAnthropic") as mock_anthropic:
         mock_settings.ANTHROPIC_API_KEY = "test-key"
-        mock_anthropic.return_value.messages.create.return_value = mock_message
+        mock_anthropic.return_value.messages.create = AsyncMock(return_value=mock_message)
 
-        result = _call_haiku(SAMPLE_RAW_TEXT)
+        result = await _call_haiku(SAMPLE_RAW_TEXT)
 
     assert result["store"]["name"] == "WINCO FOODS"
     assert len(result["items"]) == 2
     assert result["raw_text"] == SAMPLE_RAW_TEXT
 
 
-def test_call_haiku_strips_markdown_fences():
+@pytest.mark.asyncio
+async def test_call_haiku_strips_markdown_fences():
     fenced = f"```json\n{json.dumps(SAMPLE_SCAN_RESPONSE)}\n```"
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=fenced)]
 
     with patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+         patch("app.services.receipt_parser.anthropic.AsyncAnthropic") as mock_anthropic:
         mock_settings.ANTHROPIC_API_KEY = "test-key"
-        mock_anthropic.return_value.messages.create.return_value = mock_message
+        mock_anthropic.return_value.messages.create = AsyncMock(return_value=mock_message)
 
-        result = _call_haiku(SAMPLE_RAW_TEXT)
+        result = await _call_haiku(SAMPLE_RAW_TEXT)
 
     assert result["store"]["name"] == "WINCO FOODS"
     assert len(result["items"]) == 2
     assert result["summary"]["total"] == 10.24
 
 
-# ── Full flow test ────────────────────────────────────────────────────────────
+# ── Full flow tests ────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_parse_receipt_image_full_flow():
-    with patch("app.services.receipt_parser._call_gcv", return_value=SAMPLE_RAW_TEXT), \
-         patch("app.services.receipt_parser._call_haiku", return_value=SAMPLE_SCAN_RESPONSE):
+    with patch("app.services.receipt_parser._call_gcv", new=AsyncMock(return_value=SAMPLE_RAW_TEXT)), \
+         patch("app.services.receipt_parser._call_haiku", new=AsyncMock(return_value=SAMPLE_SCAN_RESPONSE)):
         result = await parse_receipt_image(VALID_JPEG, "image/jpeg")
 
     assert result["store"]["name"] == "WINCO FOODS"
@@ -200,7 +206,7 @@ async def test_parse_receipt_image_full_flow():
 
 @pytest.mark.asyncio
 async def test_parse_receipt_image_empty_ocr_raises_runtime_error():
-    with patch("app.services.receipt_parser._call_gcv", return_value="   "):
+    with patch("app.services.receipt_parser._call_gcv", new=AsyncMock(return_value="   ")):
         with pytest.raises(RuntimeError, match="No text found"):
             await parse_receipt_image(VALID_JPEG, "image/jpeg")
 
@@ -210,11 +216,11 @@ async def test_parse_receipt_image_haiku_json_error_raises_runtime_error():
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text="not valid json {{{{")]
 
-    with patch("app.services.receipt_parser._call_gcv", return_value=SAMPLE_RAW_TEXT), \
+    with patch("app.services.receipt_parser._call_gcv", new=AsyncMock(return_value=SAMPLE_RAW_TEXT)), \
          patch("app.services.receipt_parser.settings") as mock_settings, \
-         patch("app.services.receipt_parser.anthropic.Anthropic") as mock_anthropic:
+         patch("app.services.receipt_parser.anthropic.AsyncAnthropic") as mock_anthropic:
         mock_settings.ANTHROPIC_API_KEY = "test-key"
-        mock_anthropic.return_value.messages.create.return_value = mock_message
+        mock_anthropic.return_value.messages.create = AsyncMock(return_value=mock_message)
 
         with pytest.raises(RuntimeError, match="Receipt parsing failed"):
             await parse_receipt_image(VALID_JPEG, "image/jpeg")
