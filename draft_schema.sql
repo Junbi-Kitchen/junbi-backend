@@ -114,7 +114,9 @@ CREATE TABLE ingredients (
     usda_fdc_id     TEXT,
     off_barcode     TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),
-    nutrient_source TEXT   -- 'usda', 'estimated', 'verified'
+    nutrient_source TEXT,  -- 'usda', 'estimated', 'verified'
+    estimated_price DECIMAL(8,2),   -- base price for plan cost math (synthetic seed / Kroger refresh)
+    price_unit      TEXT
 );
 
 CREATE TABLE ingredient_aliases (
@@ -166,6 +168,7 @@ CREATE TABLE recipes (
     is_global       BOOLEAN DEFAULT false,
     times_cooked    INT DEFAULT 0,
     last_cooked_at  TIMESTAMPTZ,
+    embedding       vector(384),    -- MiniLM, same model as ingredients; affinity priors for unseen recipes
     created_by      TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now()
@@ -236,27 +239,99 @@ CREATE TABLE collection_recipes (
 -- ============================================================
 
 CREATE TABLE meal_plans (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       TEXT REFERENCES user_profiles(id) ON DELETE CASCADE,
-    week_start    DATE NOT NULL,
-    status        TEXT DEFAULT 'draft',
-    budget_target DECIMAL(10,2),
-    budget_actual DECIMAL(10,2),
-    generated_by  TEXT DEFAULT 'ai',
-    notes         TEXT,
-    created_at    TIMESTAMPTZ DEFAULT now(),
-    updated_at    TIMESTAMPTZ DEFAULT now(),
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id          TEXT REFERENCES user_profiles(id) ON DELETE CASCADE,
+    week_start       DATE NOT NULL,
+    status           TEXT DEFAULT 'draft',   -- lifecycle: proposed -> accepted -> closed
+    budget_target    DECIMAL(10,2),
+    budget_actual    DECIMAL(10,2),
+    generated_by     TEXT DEFAULT 'ai',
+    notes            TEXT,
+    ranking_artifact JSONB,                  -- {ranking, pairing_cautions, rationales} — powers alternates/swaps all week
+    computed_cost    DECIMAL(10,2),
+    budget_trade     JSONB,                  -- {recipe_id, delta, taken}
+    closed_at        TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ DEFAULT now(),
+    updated_at       TIMESTAMPTZ DEFAULT now(),
     UNIQUE(user_id, week_start)
 );
 
+-- Bundle items: a committed SET of meals; suggested_day is a soft, non-binding rhythm
 CREATE TABLE meal_plan_items (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    meal_plan_id  UUID REFERENCES meal_plans(id) ON DELETE CASCADE,
+    recipe_id     UUID REFERENCES recipes(id) ON DELETE SET NULL,
+    suggested_day INT,
+    meal_type     TEXT NOT NULL,
+    custom_name   TEXT,
+    sort_order    INT DEFAULT 0,
+    is_probe      BOOLEAN DEFAULT false,     -- the explore slot
+    alternates    JSONB DEFAULT '[]',        -- pre-validated substitutes from the ranking
+    rationale     TEXT,                      -- one-line "why" from the ranker
+    added_via     TEXT DEFAULT 'planner',    -- planner | user_swap | midweek_swap
+    computed_cost DECIMAL(10,2)
+);
+
+-- ============================================================
+-- MEAL PLANNING LOOP — signal log + three-layer user model
+-- (docs/meal-planning-final-strategy.md)
+-- ============================================================
+
+-- Append-only signal log — source of truth; learned state is a rebuildable projection
+CREATE TABLE plan_events (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    meal_plan_id UUID REFERENCES meal_plans(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    meal_plan_id UUID REFERENCES meal_plans(id) ON DELETE SET NULL,
     recipe_id    UUID REFERENCES recipes(id) ON DELETE SET NULL,
-    day_of_week  INT NOT NULL,
-    meal_type    TEXT NOT NULL,
-    custom_name  TEXT,
-    sort_order   INT DEFAULT 0
+    event_type   TEXT NOT NULL,
+    -- swipe_like | swipe_pass | plan_accepted | item_swapped_out | item_swapped_in
+    -- | never_show | budget_trade_taken | budget_trade_declined | recipe_opened
+    -- | marked_cooked | rated_up | rated_down | midweek_swap | week_closed
+    is_probe     BOOLEAN DEFAULT false,
+    payload      JSONB,
+    created_at   TIMESTAMPTZ DEFAULT now()
+);
+
+-- L2: learned per-recipe affinity (code-owned)
+CREATE TABLE user_recipe_affinity (
+    user_id        TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    recipe_id      UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    score          DECIMAL(6,3) NOT NULL DEFAULT 0,
+    confidence     DECIMAL(4,3) NOT NULL DEFAULT 0,
+    last_signal_at TIMESTAMPTZ,
+    updated_at     TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (user_id, recipe_id)
+);
+
+-- L2: learned scalar features (repetition_tolerance, variety_appetite, budget_strictness, ...)
+CREATE TABLE user_model_features (
+    user_id     TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,
+    value       DECIMAL(8,3) NOT NULL,
+    confidence  DECIMAL(4,3) NOT NULL DEFAULT 0,
+    updated_at  TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (user_id, feature_key)
+);
+
+-- L3: versioned LLM-written narrative (no numbers, no constraints)
+CREATE TABLE user_model_narratives (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    version    INT NOT NULL,
+    narrative  TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (user_id, version)
+);
+
+-- Audit trail for "reflection proposes, code applies"
+CREATE TABLE model_update_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    source      TEXT NOT NULL,   -- stats | reflection
+    feature_key TEXT NOT NULL,
+    delta       DECIMAL(8,3) NOT NULL,
+    evidence    TEXT,
+    applied_at  TIMESTAMPTZ DEFAULT now()
 );
 
 -- ============================================================
@@ -447,6 +522,10 @@ CREATE INDEX ON recipe_ingredients(ingredient_id);
 CREATE INDEX ON recipe_tags(tag);
 CREATE INDEX ON recipes(created_by);
 CREATE INDEX ON recipes(is_global);
+CREATE INDEX ON recipes USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- Meal planning loop
+CREATE INDEX idx_plan_events_user_created ON plan_events (user_id, created_at);
 
 -- User interactions
 CREATE INDEX ON user_recipe_interactions(user_id, action);
