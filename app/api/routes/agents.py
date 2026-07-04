@@ -1,19 +1,18 @@
 """
-Agent API routes — Smart Grocery (ADK orchestrator).
-
-Same 3 endpoints as before, now backed by the ADK runner instead of LangGraph.
+Agent API routes — Smart Grocery (LangGraph orchestrator).
 
   POST /agents/smart-grocery/start
-    → Runs the ADK orchestrator (load context → analyze → Kroger search → build cart).
+    → Runs the graph up to its human_checkpoint interrupt (load context →
+      analyze → Kroger search → build cart).
     → Returns cart preview for user review.
 
   POST /agents/smart-grocery/confirm
-    → Confirms or cancels the planned cart.
+    → Resumes the graph past human_checkpoint to confirm or cancel the cart.
     → confirmed=true  → adds to Kroger cart + writes to DB → returns checkout URL.
-    → confirmed=false → cleans up session → returns cancelled status.
+    → confirmed=false → routes to the cancelled terminal node → returns cancelled status.
 
   GET  /agents/smart-grocery/status/{session_id}
-    → Returns current session state (pending / confirmed / cancelled).
+    → Returns current session state (awaiting_confirmation / order_placed / cancelled).
 """
 
 import logging
@@ -26,7 +25,7 @@ from app.core.dependencies import get_current_user
 from app.agents.smart_grocery_agent.runner import (
     start_grocery_agent,
     confirm_grocery_order,
-    _pending_sessions,
+    get_session_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,7 +116,7 @@ async def confirm_smart_grocery(
 # ---------------------------------------------------------------------------
 
 @router.get("/smart-grocery/status/{session_id}")
-def smart_grocery_status(
+async def smart_grocery_status(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
@@ -125,28 +124,9 @@ def smart_grocery_status(
     Check the status of a Smart Grocery session.
     """
     uid = current_user["id"]
-    pending = _pending_sessions.get(session_id)
-
-    if not pending:
-        raise HTTPException(status_code=404, detail="Session not found or already completed")
-    if pending["user_id"] != uid:
+    try:
+        return await get_session_status(session_id, uid)
+    except PermissionError:
         raise HTTPException(status_code=403, detail="Session does not belong to this user")
-
-    state = pending["state"]
-    cart_items = state.get("cart_items", [])
-
-    return {
-        "session_id": session_id,
-        "status": "awaiting_confirmation",
-        "cart": {
-            "items": cart_items,
-            "total": state.get("cart_total", 0),
-            "item_count": len(cart_items),
-            "store": state.get("store_preference", "kroger"),
-            "delivery_preference": state.get("delivery_preference", "delivery"),
-        },
-        "price_comparison": state.get("price_comparison", {}),
-        "savings_summary": state.get("savings_summary", {}),
-        "nearby_stores": state.get("nearby_stores", []),
-        "missing_items": state.get("missing_items", []),
-    }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Session not found or already completed")

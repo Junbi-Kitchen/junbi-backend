@@ -1,51 +1,52 @@
 """
-smart_grocery_agent/tools.py
+smart_grocery_agent/nodes.py
 ─────────────────────────────
-ADK tool functions called by the Smart Grocery orchestrator agent.
+LangGraph node functions for the Smart Grocery graph (see graph.py).
 
-Why ToolContext.state?
-──────────────────────
-In a normal function-calling flow, the LLM would pass data from one tool to
-the next as arguments — e.g. pass the pantry list from load_user_context into
-analyze_missing_items. That works for small data but breaks down for grocery
-planning where pantry + recipe dumps can be thousands of tokens.
+Each node is `async def node(state: SmartGroceryState) -> dict` — it reads
+whatever it needs from state and returns a partial dict that LangGraph merges
+back in before running the next node. Nothing here talks to an LLM to decide
+*what* to call next; the graph edges in graph.py fix the order, so Claude is
+only invoked where actual reasoning is needed (analyze_pantry, build_cart).
 
-Instead, all tools share an ADK session-scoped state dict (tool_context.state).
-Each tool reads what it needs and writes its output back. The LLM only receives
-a short summary string from each call, keeping Gemini token usage minimal.
-
-Tool overview
+Node overview
 ─────────────
-  load_user_context(user_id)
-      DB: reads pantry_items, saved_recipes, grocery_items, user_preferences,
-          user_addresses in parallel. Writes full data to state; returns counts.
+  load_context(state)      DB: reads pantry_items, saved_recipes, grocery_items,
+                            user_preferences, user_addresses in parallel.
 
-  resolve_nearby_stores()
-      Scores Kroger-family stores by how well they match user budget, dietary
-      tags, and household size. Writes store list to state; returns top 3.
+  resolve_stores(state)    Scores Kroger-family stores by budget, dietary tags,
+                            and household size fit.
 
-  analyze_missing_items(budget)
-      Calls Claude (claude-sonnet-4-6) with the pantry + recipe data from state.
-      Claude identifies recipe gaps, expiring items, and missing staples.
-      Writes missing_items list to state; returns that list as JSON.
+  analyze_pantry(state)    Calls Claude (claude-sonnet-4-6) with the pantry +
+                            recipe data to identify recipe gaps, expiring items,
+                            and missing staples. Falls back to _stub_analysis()
+                            if ANTHROPIC_API_KEY is unset.
 
-  search_kroger_products(delivery_preference)
-      Calls search_kroger() from kroger_agent/ with the missing item names.
-      The Kroger agent uses kroger-mcp to search the live Kroger API.
-      Writes kroger_result to state; returns a short found/unfound summary.
+  search_store(state)      Calls search_kroger() from kroger_client/ with the
+                            missing item names — real live Kroger prices.
+                            Falls back to stub data if Kroger creds are unset.
 
-  build_grocery_cart(store)
-      Computes price comparison across store tiers (kroger/walmart/whole_foods/etc).
-      Optionally calls Claude to refine product selection if Kroger results are
-      available. Writes cart_items, cart_total, price_comparison to state.
+  compare_prices(state)    Estimates cart totals across store tiers (kroger/
+                            walmart/whole_foods/etc) from the Kroger baseline.
 
-Internal helpers (not called by the LLM)
-─────────────────────────────────────────
-  _score_store()           — computes a preference-fit score for a store slug
+  build_cart(state)        Picks the best product per item (Claude-refined when
+                            available, otherwise the Kroger cart preview as-is)
+                            and writes a deterministic agent_summary string.
+
+  human_checkpoint(state)  Pauses the graph via interrupt() and waits for the
+                            frontend to confirm/cancel via runner.confirm_grocery_order().
+
+  place_order(state)       Adds confirmed items to the user's real Kroger cart.
+  finalize(state)          Writes the confirmed cart to grocery_lists / grocery_items.
+  cancelled(state)         Terminal no-op when the user rejects the cart.
+
+Internal helpers (not graph nodes)
+───────────────────────────────────
+  _score_store()              — preference-fit score for a store slug
   _compute_price_comparison() — estimates cart totals across store tiers
   _cart_from_kroger_preview() — maps Kroger cart_preview into CartItem shape
-  _claude_refine_cart()    — Claude prompt to pick best products + assign aisles
-  _stub_analysis()         — fallback missing items when ANTHROPIC_API_KEY absent
+  _claude_refine_cart()       — Claude prompt to pick best products + aisles
+  _stub_analysis()            — fallback missing items when Claude is unavailable
 """
 
 import asyncio
@@ -53,32 +54,22 @@ import json
 import logging
 
 import anthropic
-from google.adk.tools import ToolContext
+from langgraph.types import interrupt
 
 from app.db import get_async_pool
 from app.config import settings
 from app.agents.kroger_client import search_kroger
 
+from .state import SmartGroceryState
+
 logger = logging.getLogger(__name__)
 
-# Common pantry staples checked during analyze_missing_items.
+# Common pantry staples checked during analyze_pantry.
 # Claude will flag any of these that are completely absent from the user's pantry.
 _STAPLES = [
     "olive oil", "garlic", "eggs", "butter", "salt", "black pepper",
     "onion", "milk", "flour", "sugar", "chicken broth", "canned tomatoes",
 ]
-
-# Maps store display names (from Instacart / kroger-mcp) → internal slug.
-# Used to normalize store names before scoring with _STORE_TRAITS.
-_NAME_TO_SLUG: dict[str, str] = {
-    "walmart": "walmart", "costco": "costco", "aldi": "aldi",
-    "kroger": "kroger", "publix": "publix",
-    "whole foods": "whole_foods", "whole foods market": "whole_foods",
-    "trader joe's": "trader_joes", "trader joes": "trader_joes",
-    "sprouts": "sprouts", "sprouts farmers market": "sprouts",
-    "target": "target", "safeway": "safeway",
-    "albertsons": "albertsons", "heb": "heb", "meijer": "meijer",
-}
 
 # Static store traits used by _score_store() to rank stores by preference fit.
 # price_rank: 1=cheapest, 5=most expensive (relative to national average)
@@ -106,16 +97,15 @@ _QUALITY_TAGS = {"organic", "non-gmo", "gluten-free", "vegan", "vegetarian", "ke
 
 
 # ---------------------------------------------------------------------------
-# Tool 1 — Load user context from DB
+# Node 1 — Load user context from DB
 # ---------------------------------------------------------------------------
 
-async def load_user_context(user_id: str, tool_context: ToolContext) -> str:
+async def load_context(state: SmartGroceryState) -> dict:
     """
     Load the user's pantry, saved recipes, active grocery list, preferences,
     and default address from the database.
-
-    Returns a short summary. Full data is stored in session state for other tools.
     """
+    user_id = state["user_id"]
     pool = get_async_pool()
 
     async def _pantry(conn):
@@ -224,32 +214,17 @@ async def load_user_context(user_id: str, tool_context: ToolContext) -> str:
             await asyncio.gather(_pantry(c1), _recipes(c2), _grocery(c3), _prefs(c4), _address(c5))
         )
 
-    tool_context.state["user_id"] = user_id
-    tool_context.state["pantry_items"] = pantry_items
-    tool_context.state["saved_recipes"] = saved_recipes
-    tool_context.state["existing_grocery_items"] = existing_items
-    tool_context.state["user_preferences"] = user_preferences
-    tool_context.state["user_address"] = user_address
-
-    expiring_count = sum(
-        1 for i in pantry_items
-        if i.get("freshnessStatus") in ("expiring", "use_soon", "expired")
-    )
-
-    return json.dumps({
-        "pantry_items": len(pantry_items),
-        "expiring_soon": expiring_count,
-        "saved_recipes": len(saved_recipes),
-        "existing_grocery_items": len(existing_items),
-        "zip_code": user_address,
-        "dietary_tags": user_preferences.get("dietaryTags", []),
-        "weekly_budget": user_preferences.get("weeklyBudget", 0),
-        "household_size": user_preferences.get("householdSize", 1),
-    })
+    return {
+        "pantry_items": pantry_items,
+        "saved_recipes": saved_recipes,
+        "existing_grocery_items": existing_items,
+        "user_preferences": user_preferences,
+        "user_address": user_address,
+    }
 
 
 # ---------------------------------------------------------------------------
-# Tool 2 — Resolve nearby stores
+# Node 2 — Resolve nearby stores
 # ---------------------------------------------------------------------------
 
 def _score_store(slug: str, prefs: dict) -> tuple[float, str, str]:
@@ -299,29 +274,26 @@ def _score_store(slug: str, prefs: dict) -> tuple[float, str, str]:
     return score, insight, insight_type
 
 
-async def resolve_nearby_stores(tool_context: ToolContext) -> str:
+async def resolve_stores(state: SmartGroceryState) -> dict:
     """
-    Find nearby stores based on the user's zip code loaded in context.
+    Find nearby stores based on the user's zip code loaded by load_context.
     Scores and ranks them by fit with the user's preferences.
-
-    Returns the top 3 ranked stores. Full list stored in session state.
     """
-    zip_code = tool_context.state.get("user_address")
-    prefs = tool_context.state.get("user_preferences", {})
+    zip_code = state.get("user_address")
+    prefs = state.get("user_preferences", {})
 
     if not zip_code:
-        tool_context.state["nearby_stores"] = []
-        return json.dumps({"error": "No zip code found for this user"})
+        return {"nearby_stores": [], "error": "No zip code found for this user"}
 
-    # Kroger-family stores available via the kroger-mcp location search
-    # For now use static nearby store list as a placeholder — the kroger_agent
-    # will resolve the actual location_id when searching products.
-    # TODO: call Instacart getStores() or kroger search_locations here for a richer list.
+    # Kroger-family stores available via the Kroger location search.
+    # For now use a static nearby store list as a placeholder — search_store
+    # resolves the actual location_id when searching products.
+    # TODO: call kroger_client's location search here for a richer list.
     kroger_slug = "kroger"
     score, insight, insight_type = _score_store(kroger_slug, prefs)
 
     nearby_stores = [{
-        "store_id": None,  # resolved by kroger_agent at search time
+        "store_id": None,  # resolved by search_store at search time
         "name": "Kroger",
         "slug": kroger_slug,
         "distance_miles": None,
@@ -332,17 +304,14 @@ async def resolve_nearby_stores(tool_context: ToolContext) -> str:
         "supports_pickup": True,
     }]
 
-    tool_context.state["nearby_stores"] = nearby_stores
-    tool_context.state["store_preference"] = kroger_slug
-
-    return json.dumps(nearby_stores[:3])
+    return {"nearby_stores": nearby_stores, "store_preference": kroger_slug}
 
 
 # ---------------------------------------------------------------------------
-# Tool 3 — Analyze pantry and identify missing items
+# Node 3 — Analyze pantry and identify missing items
 # ---------------------------------------------------------------------------
 
-async def analyze_missing_items(budget: float | None, tool_context: ToolContext) -> str:
+async def analyze_pantry(state: SmartGroceryState) -> dict:
     """
     Identify what the user needs to buy by sending their pantry and recipe data to Claude.
 
@@ -351,25 +320,19 @@ async def analyze_missing_items(budget: float | None, tool_context: ToolContext)
       - expiring_soon (priority 1): items expiring within 3 days that need replacing
       - staple (priority 3): common pantry staples completely absent
 
-    Reads from state: pantry_items, saved_recipes, existing_grocery_items, user_preferences
-    Writes to state:  missing_items (list), budget (float)
-    Returns: JSON array of missing items — the LLM sees the full list for context.
-
     Falls back to _stub_analysis() if ANTHROPIC_API_KEY is not configured.
     """
-    pantry_items = tool_context.state.get("pantry_items", [])
-    saved_recipes = tool_context.state.get("saved_recipes", [])
-    existing_items = tool_context.state.get("existing_grocery_items", [])
-    prefs = tool_context.state.get("user_preferences", {})
+    pantry_items = state.get("pantry_items", [])
+    saved_recipes = state.get("saved_recipes", [])
+    existing_items = state.get("existing_grocery_items", [])
+    prefs = state.get("user_preferences", {})
     household_size = prefs.get("householdSize", 1)
     dietary_tags = prefs.get("dietaryTags", [])
-    effective_budget = budget or prefs.get("weeklyBudget") or 0
+    effective_budget = state.get("budget") or prefs.get("weeklyBudget") or 0
 
     if not settings.ANTHROPIC_API_KEY:
         missing = _stub_analysis(pantry_items, saved_recipes)
-        tool_context.state["missing_items"] = missing
-        tool_context.state["budget"] = effective_budget
-        return json.dumps(missing)
+        return {"missing_items": missing, "budget": effective_budget}
 
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     prompt = f"""You are a smart grocery assistant for a household of {household_size}.
@@ -399,7 +362,8 @@ only flag fully absent staples, ignore already-listed items, respect dietary res
 Aim for 10-20 items max. Respond with ONLY a valid JSON array."""
 
     try:
-        response = client.messages.create(
+        response = await asyncio.to_thread(
+            client.messages.create,
             model="claude-sonnet-4-6",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -411,53 +375,41 @@ Aim for 10-20 items max. Respond with ONLY a valid JSON array."""
                 raw = raw[4:]
         missing = json.loads(raw)
     except Exception as e:
-        logger.error("analyze_missing_items Claude call failed: %s", e)
+        logger.error("analyze_pantry Claude call failed: %s", e)
         missing = _stub_analysis(pantry_items, saved_recipes)
 
-    tool_context.state["missing_items"] = missing
-    tool_context.state["budget"] = effective_budget
-
-    return json.dumps(missing)
+    return {"missing_items": missing, "budget": effective_budget}
 
 
 # ---------------------------------------------------------------------------
-# Tool 4 — Search Kroger products for all missing items
+# Node 4 — Search Kroger products for all missing items
 # ---------------------------------------------------------------------------
 
-async def search_kroger_products(
-    delivery_preference: str,
-    tool_context: ToolContext,
-) -> str:
+async def search_store(state: SmartGroceryState) -> dict:
     """
-    Search the Kroger API for every item in the missing_items list.
+    Search the Kroger API for every item in missing_items.
 
-    Delegates to search_kroger() in kroger_agent/, which:
-      1. Starts the kroger-mcp subprocess
-      2. Calls search_locations to find the nearest Kroger store by zip code
-      3. Calls search_products for each item (up to 5 results per item)
+    Delegates to search_kroger() in kroger_client/, which:
+      1. Fetches an app-level OAuth token via client credentials
+      2. Finds the nearest Kroger store by zip code
+      3. Searches products for each item (up to 5 results per item)
       4. Picks the best match per item and returns a cart_preview
-
-    Reads from state: missing_items, user_address
-    Writes to state:  kroger_result (full KrogerResult), delivery_preference,
-                      nearby_stores[0].store_id (backfilled from actual location)
-    Returns: compact JSON with store info, found/unfound counts, estimated total.
 
     Falls back gracefully: if credentials are missing, search_kroger() returns
     stub data — the cart can still be built and reviewed without live API calls.
     """
-    missing_items = tool_context.state.get("missing_items", [])
-    zip_code = tool_context.state.get("user_address")
+    missing_items = state.get("missing_items", [])
+    zip_code = state.get("user_address")
 
     if not missing_items:
-        tool_context.state["kroger_result"] = {}
-        return json.dumps({"error": "No missing items to search for"})
+        return {"kroger_result": {}, "error": "No missing items to search for"}
 
     if not zip_code:
-        tool_context.state["kroger_result"] = {}
-        return json.dumps({"error": "No zip code available for store lookup"})
+        return {"kroger_result": {}, "error": "No zip code available for store lookup"}
 
     item_names = [i["name"] for i in missing_items]
     quantities = {i["name"]: i.get("quantity", 1) for i in missing_items}
+    delivery_preference = state.get("delivery_preference", "delivery")
 
     kroger_result = await search_kroger(
         items=item_names,
@@ -466,90 +418,19 @@ async def search_kroger_products(
         delivery_preference=delivery_preference,
     )
 
-    tool_context.state["kroger_result"] = kroger_result
-    tool_context.state["delivery_preference"] = delivery_preference
+    update: dict = {"kroger_result": kroger_result}
 
     if kroger_result.get("store"):
-        tool_context.state["nearby_stores"][0]["store_id"] = kroger_result["store"].get("location_id")
+        nearby_stores = list(state.get("nearby_stores", []))
+        if nearby_stores:
+            nearby_stores[0] = {**nearby_stores[0], "store_id": kroger_result["store"].get("location_id")}
+            update["nearby_stores"] = nearby_stores
 
-    found_count = len(item_names) - len(kroger_result.get("unfound", []))
-    return json.dumps({
-        "store": kroger_result.get("store"),
-        "items_found": found_count,
-        "items_not_found": kroger_result.get("unfound", []),
-        "estimated_total": kroger_result.get("estimated_total", 0),
-    })
+    return update
 
 
 # ---------------------------------------------------------------------------
-# Tool 5 — Build the final grocery cart
-# ---------------------------------------------------------------------------
-
-async def build_grocery_cart(
-    store: str,
-    tool_context: ToolContext,
-) -> str:
-    """
-    Assemble the final grocery cart and compute cross-store price comparison.
-
-    Two steps:
-      1. Price comparison — estimate cart totals across store tiers (kroger/walmart/
-         whole_foods/etc) using the actual Kroger prices as a baseline and applying
-         per-chain price index multipliers.
-      2. Cart building — if Kroger returned product matches and Claude is configured,
-         calls _claude_refine_cart() to re-rank products and assign aisle labels.
-         Otherwise uses the Kroger agent's cart_preview directly.
-
-    Reads from state: missing_items, kroger_result, budget, delivery_preference,
-                      user_preferences
-    Writes to state:  price_comparison, savings_summary, cart_items, cart_total
-    Returns: JSON with cart_items, cart_total, item_count, savings_summary.
-    """
-    missing_items = tool_context.state.get("missing_items", [])
-    kroger_result = tool_context.state.get("kroger_result", {})
-    budget = tool_context.state.get("budget")
-    delivery_preference = tool_context.state.get("delivery_preference", "delivery")
-    prefs = tool_context.state.get("user_preferences", {})
-
-    search_results = kroger_result.get("results", {})
-    cart_preview = kroger_result.get("cart_preview", [])
-
-    # Price comparison
-    price_comparison, savings_summary = _compute_price_comparison(
-        missing_items, search_results, store
-    )
-    tool_context.state["price_comparison"] = price_comparison
-    tool_context.state["savings_summary"] = savings_summary
-
-    # Use Kroger's cart_preview if available; otherwise call Claude to build cart
-    if cart_preview and settings.ANTHROPIC_API_KEY:
-        cart_items, cart_total = await _claude_refine_cart(
-            missing_items, search_results, cart_preview, store, budget,
-            delivery_preference, prefs
-        )
-    else:
-        cart_items = _cart_from_kroger_preview(cart_preview, store)
-        cart_total = kroger_result.get("estimated_total", 0.0)
-
-    tool_context.state["cart_items"] = cart_items
-    tool_context.state["cart_total"] = cart_total
-
-    within_budget = (cart_total <= budget) if budget else None
-
-    return json.dumps({
-        "cart_items": cart_items,
-        "cart_total": cart_total,
-        "item_count": len(cart_items),
-        "budget": budget,
-        "within_budget": within_budget,
-        "over_by": round(cart_total - budget, 2) if budget and cart_total > budget else 0,
-        "savings_summary": savings_summary,
-        "store": kroger_result.get("store", {}),
-    })
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
+# Node 5 — Compare prices across store chains
 # ---------------------------------------------------------------------------
 
 def _compute_price_comparison(
@@ -566,7 +447,7 @@ def _compute_price_comparison(
     the best/worst/preferred store.
 
     Multipliers are heuristics — replace with real per-retailer search calls
-    once Instacart getStores() / per-chain product search is implemented.
+    once a per-chain product search is implemented.
     """
     baseline_total = 0.0
     item_count = 0
@@ -605,9 +486,25 @@ def _compute_price_comparison(
     return price_comparison, savings_summary
 
 
+async def compare_prices(state: SmartGroceryState) -> dict:
+    """Estimate cart totals across store tiers using the real Kroger prices as a baseline."""
+    missing_items = state.get("missing_items", [])
+    kroger_result = state.get("kroger_result", {})
+    store = state.get("store_preference", "kroger")
+
+    price_comparison, savings_summary = _compute_price_comparison(
+        missing_items, kroger_result.get("results", {}), store
+    )
+    return {"price_comparison": price_comparison, "savings_summary": savings_summary}
+
+
+# ---------------------------------------------------------------------------
+# Node 6 — Build the final grocery cart
+# ---------------------------------------------------------------------------
+
 def _cart_from_kroger_preview(cart_preview: list, store: str) -> list:
     """
-    Convert the Kroger agent's cart_preview directly into CartItem dicts.
+    Convert the Kroger cart_preview directly into CartItem dicts.
     Used as a fast path when ANTHROPIC_API_KEY is not set or Claude refinement fails.
     """
     return [
@@ -803,3 +700,241 @@ def _stub_analysis(pantry_items: list, saved_recipes: list) -> list:
         if staple not in pantry_names:
             missing.append({"name": staple, "quantity": 1, "unit": "count", "reason": "staple", "priority": 3})
     return missing[:8]
+
+
+async def build_cart(state: SmartGroceryState) -> dict:
+    """
+    Assemble the final grocery cart.
+
+    If Kroger returned product matches and Claude is configured, calls
+    _claude_refine_cart() to re-rank products and assign aisle labels.
+    Otherwise uses the Kroger cart_preview directly. Also synthesizes
+    agent_summary — a one-sentence, deterministic summary for the frontend
+    (there's no orchestrator LLM anymore to produce free text).
+    """
+    missing_items = state.get("missing_items", [])
+    kroger_result = state.get("kroger_result", {})
+    budget = state.get("budget")
+    delivery_preference = state.get("delivery_preference", "delivery")
+    prefs = state.get("user_preferences", {})
+    store = state.get("store_preference", "kroger")
+
+    search_results = kroger_result.get("results", {})
+    cart_preview = kroger_result.get("cart_preview", [])
+
+    if cart_preview and settings.ANTHROPIC_API_KEY:
+        cart_items, cart_total = await _claude_refine_cart(
+            missing_items, search_results, cart_preview, store, budget,
+            delivery_preference, prefs
+        )
+    else:
+        cart_items = _cart_from_kroger_preview(cart_preview, store)
+        cart_total = kroger_result.get("estimated_total", 0.0)
+
+    store_name = (kroger_result.get("store") or {}).get("name", store)
+    if budget:
+        if cart_total <= budget:
+            agent_summary = (
+                f"Found {len(cart_items)} items at {store_name} for "
+                f"${cart_total:.2f} — ${budget - cart_total:.2f} under your ${budget:.0f} budget."
+            )
+        else:
+            priciest = max(cart_items, key=lambda i: i.get("estimated_price") or 0, default=None)
+            over_note = f" {priciest['name'].title()} is the priciest item." if priciest else ""
+            agent_summary = (
+                f"Found {len(cart_items)} items at {store_name} for ${cart_total:.2f} — "
+                f"${cart_total - budget:.2f} over your ${budget:.0f} budget.{over_note}"
+            )
+    else:
+        agent_summary = f"Found {len(cart_items)} items at {store_name} for ${cart_total:.2f}."
+
+    return {"cart_items": cart_items, "cart_total": cart_total, "agent_summary": agent_summary}
+
+
+# ---------------------------------------------------------------------------
+# Node 7 — Human checkpoint (interrupt)
+# ---------------------------------------------------------------------------
+
+async def human_checkpoint(state: SmartGroceryState) -> dict:
+    """
+    Pause the graph and wait for the user to review the cart.
+
+    interrupt() suspends execution here — ainvoke() on the graph returns to
+    the caller with the state as computed so far (runner.start_grocery_agent
+    surfaces this as the cart-for-review response). The graph resumes only
+    when runner.confirm_grocery_order() calls ainvoke(Command(resume=...))
+    with the same thread_id — never skip straight past this node.
+    """
+    decision = interrupt({
+        "cart_items": state.get("cart_items", []),
+        "cart_total": state.get("cart_total", 0),
+        "store": state.get("store_preference"),
+    })
+    return {
+        "confirmed": bool(decision.get("confirmed")),
+        "store_override": decision.get("store_override"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Node 8 — Place order (Kroger cart)
+# ---------------------------------------------------------------------------
+
+async def place_order(state: SmartGroceryState) -> dict:
+    """
+    Add confirmed cart items to the user's real Kroger cart via the Kroger Cart API.
+
+    Flow:
+      1. Fetch the user's Kroger OAuth access token from connected_accounts table
+         (provider='kroger'). Returns "pending_oauth" if not linked yet.
+      2. Filter cart_items to those with real Kroger product_ids (not stub- prefixed).
+      3. PUT /v1/cart/add with the item UPCs and quantities.
+
+    The Kroger Cart API is write-only — it cannot read back or remove cart items.
+    Returns a status dict (not raises) so a cart failure doesn't block finalize().
+
+    TODO: Build the OAuth linking flow to populate connected_accounts:
+      POST /auth/kroger/connect → returns OAuth URL for the frontend to open
+      GET  /auth/kroger/callback → exchanges code, stores token in connected_accounts
+    """
+    if state.get("store_override"):
+        state = {**state, "store_preference": state["store_override"]}
+
+    cart_items = state.get("cart_items", [])
+    kroger_result = state.get("kroger_result", {})
+    user_id = state["user_id"]
+
+    if not settings.KROGER_CLIENT_ID:
+        return {"kroger_cart_status": {"status": "stub", "message": "Kroger credentials not configured"}}
+
+    pool = get_async_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT access_token FROM connected_accounts
+                       WHERE user_id = %s AND provider = 'kroger'
+                       AND expires_at > NOW() LIMIT 1""",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+    except Exception:
+        row = None
+
+    if not row:
+        return {"kroger_cart_status": {
+            "status": "pending_oauth",
+            "message": "User has not linked their Kroger account yet",
+        }}
+
+    items_payload = []
+    store_info = kroger_result.get("store", {})
+    location_id = store_info.get("location_id") if store_info else None
+
+    for item in cart_items:
+        if item.get("product_id") and not item["product_id"].startswith("stub-"):
+            items_payload.append({
+                "upc": item["product_id"],
+                "quantity": int(max(item.get("quantity", 1), 1)),
+                "modality": "PICKUP",
+            })
+
+    if not items_payload:
+        return {"kroger_cart_status": {"status": "no_valid_products", "message": "No Kroger product IDs available to add"}}
+
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.put(
+                "https://api.kroger.com/v1/cart/add",
+                headers={
+                    "Authorization": f"Bearer {row['access_token']}",
+                    "Content-Type": "application/json",
+                },
+                json={"items": items_payload},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+        return {"kroger_cart_status": {"status": "added", "item_count": len(items_payload), "location_id": location_id}}
+    except Exception as e:
+        logger.error("Kroger cart add failed: %s", e)
+        return {"kroger_cart_status": {"status": "error", "message": str(e)}}
+
+
+# ---------------------------------------------------------------------------
+# Node 9 — Finalize (write confirmed cart to DB)
+# ---------------------------------------------------------------------------
+
+async def finalize(state: SmartGroceryState) -> dict:
+    """
+    Persist the confirmed cart to the database as a grocery list.
+
+    Finds or creates the user's active grocery_list, then upserts each cart
+    item into grocery_items with its ingredient_id, aisle, and estimated_price.
+    Updates the list's estimated_total on completion.
+
+    Failure is logged but not raised — a DB write failure doesn't roll back the
+    Kroger cart add that already happened in place_order().
+    """
+    cart_items = state.get("cart_items", [])
+    user_id = state["user_id"]
+
+    if not cart_items:
+        return {"grocery_list_id": None, "status": "order_placed"}
+
+    pool = get_async_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id FROM grocery_lists WHERE user_id = %s AND status = 'active' ORDER BY created_at LIMIT 1",
+                    (user_id,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    list_id = str(row["id"])
+                else:
+                    await cur.execute(
+                        "INSERT INTO grocery_lists (user_id, name, status) VALUES (%s, 'My List', 'active') RETURNING id",
+                        (user_id,)
+                    )
+                    list_id = str((await cur.fetchone())["id"])
+
+                for item in cart_items:
+                    name = item.get("name", "")
+                    if not name:
+                        continue
+                    await cur.execute(
+                        "INSERT INTO ingredients (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+                        (name,)
+                    )
+                    await cur.execute("SELECT id FROM ingredients WHERE name = %s", (name,))
+                    ingredient_id = str((await cur.fetchone())["id"])
+                    await cur.execute("""
+                        INSERT INTO grocery_items
+                            (list_id, name, ingredient_id, quantity, unit, aisle, estimated_price)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        list_id, name, ingredient_id,
+                        item.get("quantity", 1),
+                        item.get("unit", ""),
+                        item.get("aisle", "Pantry"),
+                        item.get("estimated_price"),
+                    ))
+                await cur.execute(
+                    "UPDATE grocery_lists SET estimated_total = %s WHERE id = %s",
+                    (state.get("cart_total"), list_id)
+                )
+        return {"grocery_list_id": list_id, "status": "order_placed"}
+    except Exception as e:
+        logger.error("finalize failed: %s", e)
+        return {"grocery_list_id": None, "status": "order_placed"}
+
+
+# ---------------------------------------------------------------------------
+# Node 10 — Cancelled (terminal, when the user rejects the cart)
+# ---------------------------------------------------------------------------
+
+async def cancelled(state: SmartGroceryState) -> dict:
+    """Terminal node — the cart is discarded, nothing is written or ordered."""
+    return {"status": "cancelled"}

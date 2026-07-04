@@ -1,13 +1,8 @@
 import json
 import logging
 import re
-import uuid
 
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types as genai_types
-
-from app.agents.ingredient_resolver import root_agent
+from app.agents.ingredient_resolver import ingredient_resolver_graph
 from app.agents.ingredient_resolver.resources import get_pool
 
 logger = logging.getLogger(__name__)
@@ -33,15 +28,6 @@ _QUANTITY_RE = re.compile(
     re.IGNORECASE,
 )
 _PAREN_RE = re.compile(r"\(.*?\)")
-
-_session_service = InMemorySessionService()
-_runner = Runner(
-    agent=root_agent,
-    app_name="ingredient_resolver",
-    session_service=_session_service,
-    auto_create_session=True,
-)
-
 
 def _normalize(raw: str) -> str:
     text = _PAREN_RE.sub("", raw)
@@ -106,39 +92,47 @@ async def run_ingredient_resolver(raw_name: str) -> str:
 
     logger.info("pre-screen miss for %r (normalized: %r) — invoking agent", raw_name, normalized)
 
-    message = genai_types.Content(
-        role="user",
-        parts=[genai_types.Part(text=json.dumps({"raw_name": raw_name, "normalized_name": normalized}))],
-    )
+    initial_state = {
+        "messages": [{
+            "role": "user",
+            "content": json.dumps({"raw_name": raw_name, "normalized_name": normalized}),
+        }],
+    }
+    final_state = await ingredient_resolver_graph.ainvoke(initial_state)
+    messages = final_state["messages"]
+
+    seen_ids: set[str] = set()
+    for msg in messages:
+        if msg["role"] != "user" or not isinstance(msg["content"], list):
+            continue
+        for block in msg["content"]:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            try:
+                resp = json.loads(block["content"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(resp, list):
+                for item in resp:
+                    if isinstance(item, dict) and "id" in item:
+                        seen_ids.add(item["id"])
+            elif isinstance(resp, dict) and "id" in resp:
+                seen_ids.add(resp["id"])
 
     final_text = ""
-    seen_ids: set[str] = set()
-
-    async for event in _runner.run_async(
-        user_id="system",
-        session_id=str(uuid.uuid4()),
-        new_message=message,
-    ):
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "function_response") and part.function_response:
-                    resp = part.function_response.response
-                    if isinstance(resp, list):
-                        for item in resp:
-                            if isinstance(item, dict) and "id" in item:
-                                seen_ids.add(item["id"])
-                    elif isinstance(resp, dict) and "id" in resp:
-                        seen_ids.add(resp["id"])
-        if event.is_final_response() and event.content and event.content.parts:
-            for part in event.content.parts:
-                if part.text:
-                    final_text = part.text.strip()
-                    break
+    for block in messages[-1]["content"]:
+        if getattr(block, "type", None) == "text" and block.text:
+            final_text = block.text.strip()
+            break
 
     result = {}
     try:
-        clean = re.sub(r"^```(?:json)?\n?", "", final_text)
-        clean = re.sub(r"\n?```$", "", clean).strip()
+        # Claude sometimes prefaces the JSON with a sentence or two of explanation
+        # despite the system prompt forbidding it — pull the JSON object out of
+        # wherever it lands (fenced or not) instead of assuming it's at index 0.
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", final_text, re.DOTALL)
+        bare = re.search(r"(\{.*\})", final_text, re.DOTALL)
+        clean = fenced.group(1) if fenced else (bare.group(1) if bare else final_text)
         result = json.loads(clean)
         resolved_id = result["ingredient_id"]
     except Exception as e:
