@@ -2,7 +2,7 @@
 
 ## What This Service Does
 
-FastAPI backend for the Junbi kitchen assistant app. Handles pantry tracking, recipe management, grocery list generation, AI-powered food scanning, and a LangGraph agent that orchestrates end-to-end grocery ordering via Instacart.
+FastAPI backend for the Junbi kitchen assistant app. Handles pantry tracking, recipe management, grocery list generation, AI-powered food scanning, and a LangGraph agent that orchestrates end-to-end grocery ordering via Kroger.
 
 ---
 
@@ -27,12 +27,16 @@ FastAPI backend for the Junbi kitchen assistant app. Handles pantry tracking, re
 ```
 gook-backend/
 ├── app/
-│   ├── agents/smart_grocery/   # LangGraph agent
-│   │   ├── graph.py            # StateGraph definition + compilation
-│   │   ├── nodes.py            # All node functions
-│   │   ├── state.py            # SmartGroceryState TypedDict
-│   │   └── tools/
-│   │       └── instacart.py    # HTTP bridge to Instacart TS service
+│   ├── agents/
+│   │   ├── smart_grocery_agent/ # LangGraph agent
+│   │   │   ├── graph.py         # StateGraph definition + compilation (MemorySaver checkpointer)
+│   │   │   ├── nodes.py         # All node functions + internal helpers
+│   │   │   ├── state.py         # SmartGroceryState TypedDict
+│   │   │   └── runner.py        # start/confirm/status — public entry points used by routes
+│   │   ├── ingredient_resolver/ # LangGraph agent (2-node Anthropic tool-use loop)
+│   │   │   ├── agent.py         # tool schemas, system prompt, graph
+│   │   │   └── tools.py         # search_fulltext / search_vector / create_ingredient
+│   │   └── kroger_client/       # direct Kroger REST client (no LLM)
 │   ├── api/routes/             # FastAPI routers (one file per domain)
 │   │   ├── agents.py           # Smart Grocery agent endpoints
 │   │   ├── grocery.py
@@ -139,18 +143,20 @@ async def get_me(
 
 **Graph nodes (in order):**
 1. `load_context` — 5 parallel async DB queries (pantry, recipes, grocery list, preferences, addresses)
-2. `resolve_stores` — calls Instacart service, scores stores by budget + dietary tags
+2. `resolve_stores` — scores Kroger-family stores by budget + dietary tags
 3. `analyze_pantry` — Claude identifies what to buy (gaps from recipes, expiring items, staples)
-4. `search_store` — searches store catalog via Instacart TS bridge
+4. `search_store` — searches the live Kroger catalog via `kroger_client`
 5. `compare_prices` — estimates cart total across Walmart, Costco, Kroger, Publix, Whole Foods, Aldi
 6. `build_cart` — Claude selects best products per item with budget awareness
-7. `human_checkpoint` — **interrupts graph** — returns to frontend for user review + store override
-8. `place_order` — executes Instacart checkout, returns checkout URL for WebView
+7. `human_checkpoint` — **interrupts graph** (`langgraph.types.interrupt`) — returns to frontend for user review + store override
+8. `place_order` — adds items to the user's real Kroger cart, returns checkout URL for WebView
 9. `finalize` — writes confirmed cart to `grocery_list_items` in DB
+
+There's no orchestrator LLM sequencing these steps — the node order above *is* the graph (see `graph.py`). Claude is only called inside `analyze_pantry` and `build_cart`, where actual reasoning happens.
 
 **Checkpointing:** Uses `MemorySaver` (in-process). For production, swap to `PostgresSaver` pointing at Supabase.
 
-**Current status:** Agent graph executes end-to-end with **stub data** for Instacart catalog calls. Real Instacart integration pending API key setup.
+**Current status:** Agent graph executes end-to-end. Each node degrades gracefully on its own when a dependency is unconfigured — `analyze_pantry`/`build_cart` fall back to non-LLM heuristics without `ANTHROPIC_API_KEY`, `search_store` falls back to stub Kroger data without `KROGER_CLIENT_ID`/`KROGER_CLIENT_SECRET` — rather than the whole agent short-circuiting to canned data.
 
 **To visualize the graph:**
 ```bash
@@ -209,8 +215,8 @@ GCV_API_KEY=...                            # Google Cloud Vision (receipt scanni
 | `POST /grocery/{id}/generate` | ✅ Live |
 | `GET /orders` | ✅ Live |
 | `GET /savings` | ✅ Live |
-| Smart Grocery agent (full flow) | 🟡 Stub data (Instacart calls mocked) |
-| Recipe URL import / scraping | 🟡 Stub (creates blank row, no scraping) |
+| Smart Grocery agent (full flow) | 🟡 Live Kroger search + price comparison; cart-add pending Kroger OAuth linking |
+| Recipe URL import (YouTube/TikTok/Instagram) | ✅ Live (oEmbed/Data API metadata + Claude Haiku extraction) — Instagram needs `INSTAGRAM_ACCESS_TOKEN` |
 | Receipt OCR | 🟡 Stub (image uploaded but not processed) |
 
 ---
@@ -242,20 +248,25 @@ python scripts/kroger/kroger_locations_test.py      # store lookup across 8 US z
 
 ## Smart Grocery Agent (`app/agents/smart_grocery_agent/`)
 
-ADK `LlmAgent` orchestrator using `LiteLlm(model="anthropic/claude-haiku-4-5-20251001")`.
+LangGraph `StateGraph` — see the node list under "Smart Grocery Agent (LangGraph)" above for the graph shape. This section covers implementation details not covered there.
 
-**Model history:** Started on `gemini-2.0-flash` → switched to Anthropic after Google free tier quota exhausted. Account has new-generation models only (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6`) — claude-3 series returns 404.
-
-**Tool call order (enforced in system prompt):**
-1. `load_user_context` — DB: pantry, recipes, grocery list, preferences, zip code
-2. `resolve_nearby_stores` — scores Kroger-family stores by budget/dietary fit
-3. `analyze_missing_items` — Claude identifies recipe gaps, expiring items, staples
-4. `search_kroger_products` — calls `kroger_client.search_kroger()` (direct API, no LLM)
-5. `build_grocery_cart` — Claude picks best product per item with budget + dietary reasoning
+**Model history:** Originally an ADK `LlmAgent` using `LiteLlm(model="anthropic/claude-haiku-4-5-20251001")` (before that, `gemini-2.0-flash`, switched after Google free tier quota exhausted). Migrated to a plain LangGraph `StateGraph` + the Anthropic SDK directly — ADK has no interrupt primitive, so the human-in-the-loop cart review had to be faked as two independent HTTP-triggered phases with a hand-rolled `_pending_sessions` dict. LangGraph's `interrupt()` / `Command(resume=...)` (see `graph.py`, `runner.py`) restores a real pause/resume against the graph's own checkpoint, so there's no separate session store to keep in sync. Models used inside nodes: `claude-sonnet-4-6` for `analyze_pantry` (more reasoning over pantry/recipe data), `claude-haiku-4-5-20251001` for `build_cart`'s `_claude_refine_cart` (cheaper per-item product picking).
 
 **`_claude_refine_cart` personalization:** Translates user `dietaryTags` + `allergies` into explicit prompt instructions. Passes full `KrogerProduct` data (allergens, nutrition, organic flag, sale price, stock level, rating) per option. Claude must respect hard allergen blocks before budget or quality.
 
-**Data flow:** Large payloads (pantry dumps, Kroger results) live in `ToolContext.state`, not in LLM context. Each tool returns only a short summary string — keeps token usage low.
+**Data flow:** Large payloads (pantry dumps, Kroger results) live in `SmartGroceryState` (see `state.py`), not in any LLM's context. Each node reads what it needs from state and returns a partial update — Claude only ever sees the compact prompt built by the node that calls it, never the full state dict.
+
+**Session identity:** Each `/agents/smart-grocery/start` call creates one LangGraph thread (`thread_id=session_id`), checkpointed by `MemorySaver`. `confirm_grocery_order()` and `get_session_status()` read that same thread via `graph.aget_state()` — ownership is just checking `state["user_id"] == user_id` on whatever the checkpointer has for that thread.
+
+## Ingredient Resolver (`app/agents/ingredient_resolver/`)
+
+LangGraph 2-node Anthropic tool-use loop (`call_model` ⇄ `call_tools`), model `claude-haiku-4-5-20251001`. Resolves a raw ingredient name (e.g. "2 cups finely chopped organic yellow onion") to a canonical `ingredients` row.
+
+**Flow:** `app/services/ingredient_resolver.py` normalizes the raw name and runs a cheap exact-match pre-screen (name/alias lookup) first — the graph only runs on a pre-screen miss. Once invoked, Claude calls `search_fulltext` and `search_vector` (plain async functions in `tools.py`, unchanged by the LangGraph migration since they never depended on ADK) to find candidates, then either returns an existing id or calls `create_ingredient`. No checkpointer — single-shot per call, no human review step.
+
+**Hallucination guard:** every id the model returns is checked against the ids actually seen in tool results (`seen_ids` in `run_ingredient_resolver()`) before being trusted. An unverified id falls back to the first seen candidate, or to creating a new ingredient.
+
+**Model note:** this agent used to run on ADK's `Agent` + Gemini; it's now on the Anthropic SDK directly, so it needs `ANTHROPIC_API_KEY`, not a Google key.
 
 ---
 

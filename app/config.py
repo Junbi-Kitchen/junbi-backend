@@ -18,9 +18,6 @@ class Settings(BaseSettings):
     KROGER_CLIENT_SECRET: str | None = None
     KROGER_REDIRECT_URI: str = "http://localhost:8000/auth/kroger/callback"
 
-    # Google ADK (for Kroger agent LLM)
-    GOOGLE_API_KEY: str | None = None
-
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

@@ -1,3 +1,3 @@
-from .agent import root_agent
+from .agent import ingredient_resolver_graph
 
-__all__ = ["root_agent"]
+__all__ = ["ingredient_resolver_graph"]
